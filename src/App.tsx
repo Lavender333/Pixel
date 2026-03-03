@@ -47,6 +47,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { getTemplatePixels } from './templateData';
 import { Frame, Project, ProjectData, UserStats, Challenge, Submission } from './types';
+import { PixelCanvas } from './PixelCanvas';
 
 // --- Constants & Assets ---
 
@@ -266,6 +267,24 @@ export default function App() {
     }
   };
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+        } else if ((e.key === 'y') || (e.key === 'z' && e.shiftKey)) {
+          e.preventDefault();
+          redo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
   const handlePixelAction = (index: number, isInitialClick = false) => {
     const currentFrame = frames[currentFrameIndex];
     const currentPixels = currentFrame.pixels;
@@ -477,7 +496,7 @@ export default function App() {
     setIsPlaying(true);
   };
 
-  const applyEffect = (effect: 'glow' | 'sparkle') => {
+  const applyEffect = (effect: 'glow' | 'sparkle' | 'outline' | 'remix') => {
     const currentPixels = [...frames[currentFrameIndex].pixels];
     const newPixels = [...currentPixels];
 
@@ -513,6 +532,65 @@ export default function App() {
           if (sx >= 0 && sx < gridSize && sy >= 0 && sy < gridSize) {
             newPixels[sy * gridSize + sx] = '#ffffff';
           }
+        }
+      });
+    }
+
+    if (effect === 'outline') {
+      // Create a temporary array to track which pixels should be outlined
+      const outlinePixels = new Set<number>();
+      
+      currentPixels.forEach((color, i) => {
+        if (color !== 'transparent') {
+          const x = i % gridSize;
+          const y = Math.floor(i / gridSize);
+          
+          // Check all 8 neighbors
+          const neighbors = [
+            { nx: x - 1, ny: y - 1 }, { nx: x, ny: y - 1 }, { nx: x + 1, ny: y - 1 },
+            { nx: x - 1, ny: y },                         { nx: x + 1, ny: y },
+            { nx: x - 1, ny: y + 1 }, { nx: x, ny: y + 1 }, { nx: x + 1, ny: y + 1 }
+          ];
+          
+          neighbors.forEach(({ nx, ny }) => {
+            if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+              const nIdx = ny * gridSize + nx;
+              if (currentPixels[nIdx] === 'transparent') {
+                outlinePixels.add(nIdx);
+              }
+            }
+          });
+        }
+      });
+      
+      // Apply black outline
+      outlinePixels.forEach(idx => {
+        newPixels[idx] = '#000000';
+      });
+    }
+
+    if (effect === 'remix') {
+      // Color remix - swap to a trending palette
+      const trendingPalettes = [
+        ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dda0dd', '#98d8c8'],
+        ['#f093fb', '#f5576c', '#4facfe', '#00f2fe', '#43e97b', '#38f9d7', '#fae042'],
+        ['#a8edea', '#fed6e3', '#d299c2', '#fef9d7', '#c8c6fa', '#b8f2e6', '#aec6cf'],
+        ['#ff9a9e', '#fecfef', '#fecfef', '#a8e6cf', '#dcedc8', '#ffd3a5', '#ffaaa5']
+      ];
+      
+      const randomPalette = trendingPalettes[Math.floor(Math.random() * trendingPalettes.length)];
+      const usedColors = new Set(currentPixels.filter(c => c !== 'transparent'));
+      const colorMap = new Map<string, string>();
+      
+      Array.from(usedColors).forEach((color, index) => {
+        if (index < randomPalette.length) {
+          colorMap.set(color, randomPalette[index]);
+        }
+      });
+      
+      currentPixels.forEach((color, i) => {
+        if (color !== 'transparent' && colorMap.has(color)) {
+          newPixels[i] = colorMap.get(color)!;
         }
       });
     }
@@ -810,6 +888,8 @@ export default function App() {
           <div className="h-[1px] bg-zinc-800 mx-2 my-1" />
           <ToolButton active={false} onClick={() => applyEffect('glow')} icon={<Sparkles className="w-5 h-5 text-yellow-500" />} label="Add Glow" />
           <ToolButton active={false} onClick={() => applyEffect('sparkle')} icon={<Star className="w-5 h-5 text-blue-400" />} label="Add Sparkles" />
+          <ToolButton active={false} onClick={() => applyEffect('outline')} icon={<Square className="w-5 h-5 text-gray-400" />} label="Clean Outline" />
+          <ToolButton active={false} onClick={() => applyEffect('remix')} icon={<Dices className="w-5 h-5 text-purple-400" />} label="Color Remix" />
           <div className="h-[1px] bg-zinc-800 mx-2 my-1" />
           <ToolButton active={false} onClick={clearCanvas} icon={<RotateCcw className="w-5 h-5" />} label="Clear Canvas" />
           <ToolButton active={mirrorMode} onClick={() => setMirrorMode(!mirrorMode)} icon={<Maximize2 className="w-5 h-5" />} label="Mirror" />
