@@ -2090,7 +2090,7 @@ export default function App() {
         <div className="w-24 h-24 bg-purple-600 rounded-3xl flex items-center justify-center mb-8 shadow-2xl shadow-purple-500/20">
           <Palette className="w-12 h-12 text-white" />
         </div>
-        <h1 className="text-4xl font-display italic text-white mb-4 tracking-tighter">Build Your Pixel Identity.</h1>
+        <h1 className="text-4xl font-display italic text-white mb-4 tracking-tighter">Create Your Pixels and Spirites</h1>
         <p className="text-zinc-500 mb-12">Create. Customize. Share.</p>
         
         <Button onClick={() => setShowTemplates(true)} className="w-full py-4 text-lg">
