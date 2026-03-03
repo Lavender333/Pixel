@@ -378,6 +378,7 @@ export default function App() {
   const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
   const [onionSkinning, setOnionSkinning] = useState(false);
   const [showShades, setShowShades] = useState(true);
+  const [showMobileQuickColor, setShowMobileQuickColor] = useState(false);
   const [activePaletteTab, setActivePaletteTab] = useState<'current' | 'saved' | 'trending' | 'packs'>('current');
   const [savedPalettes, setSavedPalettes] = useState<{name: string, colors: string[]}[]>(TRENDING_PALETTES);
   const [paletteName, setPaletteName] = useState('My New Palette');
@@ -2607,33 +2608,44 @@ export default function App() {
 
         {/* Floating Tool Panel */}
         <div className="fixed md:absolute right-2 md:right-4 top-20 md:top-4 bottom-24 md:bottom-4 flex flex-col gap-2 bg-zinc-900/85 backdrop-blur-xl p-2 rounded-3xl border border-zinc-800 shadow-2xl overflow-y-auto scrollbar-hide z-50 max-h-[calc(100dvh-9rem)] md:max-h-[calc(100%-2rem)] pointer-events-auto">
-          <div className="md:hidden sticky top-0 z-10 bg-zinc-900/95 border border-zinc-800 rounded-2xl p-2 flex flex-col gap-2">
-            <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest text-center">Quick Color</span>
-            <div className="flex items-center gap-2">
-              <label className="w-10 h-10 rounded-xl border-2 border-zinc-700 overflow-hidden relative flex-shrink-0">
-                <span className="absolute inset-0" style={{ backgroundColor: selectedColor }} />
-                <input
-                  type="color"
-                  value={normalizeToHexColor(selectedColor) ?? '#ffffff'}
-                  onChange={(e) => setSelectedColor(e.target.value)}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                  aria-label="Select color"
-                />
-              </label>
-              <button
-                onClick={() => setActivePaletteTab('current')}
-                className="flex-1 px-2 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-[8px] font-bold uppercase tracking-widest text-zinc-300"
-              >
-                My Palette
-              </button>
-              <button
-                onClick={() => addColorToPalette(selectedColor)}
-                className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center"
-                title="Add color"
-              >
-                <Plus className="w-4 h-4 text-zinc-300" />
-              </button>
-            </div>
+          <div className="md:hidden sticky top-0 z-10 flex flex-col gap-2">
+            <button
+              onClick={() => setShowMobileQuickColor(prev => !prev)}
+              className="w-full px-2 py-2 rounded-xl bg-zinc-900/95 border border-zinc-800 text-[8px] font-bold uppercase tracking-widest text-zinc-300 flex items-center justify-between"
+            >
+              <span>Quick Color</span>
+              <span>{showMobileQuickColor ? 'Hide' : 'Show'}</span>
+            </button>
+
+            {showMobileQuickColor && (
+              <div className="bg-zinc-900/95 border border-zinc-800 rounded-2xl p-2 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="w-10 h-10 rounded-xl border-2 border-zinc-700 overflow-hidden relative flex-shrink-0">
+                    <span className="absolute inset-0" style={{ backgroundColor: selectedColor }} />
+                    <input
+                      type="color"
+                      value={normalizeToHexColor(selectedColor) ?? '#ffffff'}
+                      onChange={(e) => setSelectedColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      aria-label="Select color"
+                    />
+                  </label>
+                  <button
+                    onClick={() => setActivePaletteTab('current')}
+                    className="flex-1 px-2 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-[8px] font-bold uppercase tracking-widest text-zinc-300"
+                  >
+                    My Palette
+                  </button>
+                  <button
+                    onClick={() => addColorToPalette(selectedColor)}
+                    className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center"
+                    title="Add color"
+                  >
+                    <Plus className="w-4 h-4 text-zinc-300" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <ToolButton active={tool === 'pencil'} onClick={() => setTool('pencil')} icon={<Pencil className="w-5 h-5" />} label="Pencil" />
