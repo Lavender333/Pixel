@@ -253,6 +253,7 @@ const DAILY_STUDIO_TASKS: Array<{
 type StudioTask = (typeof DAILY_STUDIO_TASKS)[number] & { claimed: boolean };
 
 const MAX_FRAMES = 40;
+const BIRTHDAY_SPLASH_END_AT = new Date('2026-03-10T23:59:59');
 
 // --- Components ---
 
@@ -294,6 +295,7 @@ export default function App() {
   // Navigation & UI State
   const [activeTab, setActiveTab] = useState<'create' | 'studio' | 'closet' | 'challenges' | 'profile'>('create');
   const [onboarding, setOnboarding] = useState(true);
+  const [showBirthdaySplash, setShowBirthdaySplash] = useState(() => new Date() <= BIRTHDAY_SPLASH_END_AT);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   
@@ -393,6 +395,20 @@ export default function App() {
   useEffect(() => {
     audioEngineRef.current = new PixelSpriteAudio();
   }, []);
+
+  useEffect(() => {
+    if (!showBirthdaySplash) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        setShowBirthdaySplash(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showBirthdaySplash]);
 
   useEffect(() => {
     audioEngineRef.current?.setEnabled(soundEnabled);
@@ -1976,6 +1992,69 @@ export default function App() {
 
   // --- Sub-Views ---
 
+  const BirthdaySplashView = () => (
+    <div className="fixed inset-0 z-[120] bg-gradient-to-br from-fuchsia-950 via-purple-950 to-indigo-950 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none">
+        {Array.from({ length: 18 }).map((_, index) => (
+          <motion.div
+            key={index}
+            className="absolute rounded-full"
+            style={{
+              left: `${(index * 17) % 100}%`,
+              top: `${(index * 23) % 100}%`,
+              width: `${6 + (index % 4) * 4}px`,
+              height: `${6 + (index % 4) * 4}px`,
+              background: index % 2 === 0 ? 'rgba(250, 204, 21, 0.85)' : 'rgba(236, 72, 153, 0.75)',
+              boxShadow: '0 0 14px rgba(250, 204, 21, 0.6)',
+            }}
+            animate={{
+              y: [0, -16, 0],
+              opacity: [0.35, 1, 0.35],
+              scale: [0.85, 1.15, 0.85],
+            }}
+            transition={{
+              duration: 2.2 + (index % 5) * 0.25,
+              repeat: Infinity,
+              ease: 'easeInOut',
+              delay: index * 0.06,
+            }}
+          />
+        ))}
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative max-w-xl w-full rounded-[36px] border border-white/20 bg-black/35 backdrop-blur-xl px-7 py-10 md:px-10 md:py-12 shadow-2xl"
+      >
+        <motion.div
+          animate={{ rotate: [0, -5, 5, 0] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          className="mx-auto mb-6 w-20 h-20 rounded-3xl bg-gradient-to-br from-yellow-300 via-fuchsia-400 to-purple-500 flex items-center justify-center shadow-lg shadow-fuchsia-500/40"
+        >
+          <Sparkles className="w-10 h-10 text-white" />
+        </motion.div>
+
+        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-fuchsia-200 mb-3">Special Splash</p>
+        <h1 className="text-4xl md:text-5xl font-display italic text-white tracking-tight leading-tight">
+          Happy 10th Birthday Mariah
+        </h1>
+        <p className="mt-4 text-zinc-200/90 text-sm md:text-base">
+          Wishing you a glitter-filled day of art, color, and fun pixel magic.
+        </p>
+
+        <motion.button
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => setShowBirthdaySplash(false)}
+          className="mt-8 w-full rounded-2xl bg-gradient-to-r from-yellow-300 via-pink-400 to-purple-500 text-black font-black uppercase tracking-[0.22em] text-xs py-4 shadow-xl shadow-pink-500/30"
+        >
+          Press Enter
+        </motion.button>
+      </motion.div>
+    </div>
+  );
+
   const OnboardingView = () => (
     <div className="fixed inset-0 z-[100] bg-zinc-950 flex flex-col items-center justify-center p-8 text-center">
       <motion.div 
@@ -3502,6 +3581,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-[#0a0a0a] text-zinc-300 selection:bg-purple-500/30">
+      {onboarding && activeTab === 'create' && showBirthdaySplash && <BirthdaySplashView />}
       {onboarding && activeTab === 'create' && <OnboardingView />}
       <TemplatesModal />
       
