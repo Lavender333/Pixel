@@ -1004,7 +1004,7 @@ export default function App() {
   // Editor Handlers
   const isTeenMode = (stats?.level || 1) >= 10;
 
-  const saveToHistory = useCallback((pixels: string[], frameIndex: number = currentFrameIndex) => {
+  const saveToHistory = useCallback((pixels: string[], frameIndex: number = currentFrameIndex, label = 'Pixel history save') => {
     const snapshot = coreHistoryRef.current;
     const trimmed = snapshot.entries
       .slice(0, snapshot.index + 1)
@@ -1024,9 +1024,19 @@ export default function App() {
 
     executeCoreHistoryCommand(
       { entries: appended, index: appended.length - 1 },
-      'Pixel history save'
+      label
     );
   }, [currentFrameIndex, executeCoreHistoryCommand, syncHistoryFromCore]);
+
+  const applyFramePixelsWithHistory = useCallback((pixels: string[], frameIndex: number = currentFrameIndex, label = 'Pixel edit') => {
+    setFrames(prev => {
+      if (!prev[frameIndex]) return prev;
+      const next = [...prev];
+      next[frameIndex] = { ...next[frameIndex], pixels };
+      return next;
+    });
+    saveToHistory(pixels, frameIndex, label);
+  }, [currentFrameIndex, saveToHistory]);
 
   const undo = useCallback(() => {
     const commandStack = coreCommandStackRef.current;
@@ -1430,14 +1440,7 @@ export default function App() {
 
   const clearCanvas = () => {
     const blankPixels = Array(gridSize * gridSize).fill('transparent');
-    setFrames(prev => {
-      const next = [...prev];
-      const frame = next[currentFrameIndex];
-      if (!frame) return prev;
-      next[currentFrameIndex] = { ...frame, pixels: blankPixels };
-      return next;
-    });
-    saveToHistory(blankPixels);
+    applyFramePixelsWithHistory(blankPixels, currentFrameIndex, 'Canvas cleared');
     pixelCanvasRef.current?.clearSelection();
     setSelection(null);
     setShowNudgePanel(false);
@@ -1457,8 +1460,7 @@ export default function App() {
     });
 
     const newPixels = currentPixels.map(c => c === 'transparent' ? 'transparent' : colorMap[c]);
-    updateFrame(newPixels);
-    saveToHistory(newPixels);
+    applyFramePixelsWithHistory(newPixels, currentFrameIndex, 'Colors remixed');
     
     confetti({
       particleCount: 40,
@@ -2114,8 +2116,12 @@ export default function App() {
       });
     }
 
-    updateFrame(newPixels);
-    saveToHistory(newPixels);
+    const effectLabel = effect === 'outline'
+      ? 'Effect outline'
+      : effect === 'remix'
+        ? 'Effect remix'
+        : `Effect ${effect}`;
+    applyFramePixelsWithHistory(newPixels, currentFrameIndex, effectLabel);
   };
 
   const saveCurrentPalette = () => {
