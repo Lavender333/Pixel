@@ -58,7 +58,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { PixelSpriteAudio } from './PixelSpriteAudio';
 import { initAnalytics, trackEvent } from './analytics';
-import { ExportEngine, ToolEngine } from './core';
+import { Command, CommandContext, CommandStack, ExportEngine, ToolEngine } from './core';
 import { TEMPLATE_DEFINITIONS, buildColorableMask, getTemplateLockMask, getTemplatePixels, TemplateCategory, TemplateDefinition } from './templateData';
 import { Frame, Project, ProjectData, UserStats, Challenge, Submission } from './types';
 import { PixelCanvas, PixelCanvasHandle } from './PixelCanvas';
@@ -349,6 +349,7 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
 export default function App() {
   type ExportFormat = 'png' | 'gif' | 'sprite-sheet' | 'jpeg' | 'print' | 'palette';
   type HistoryEntry = { frameIndex: number; pixels: string[] };
+  type CoreHistorySnapshot = { entries: HistoryEntry[]; index: number };
 
   // Navigation & UI State
   const [activeTab, setActiveTab] = useState<'create' | 'studio' | 'closet' | 'challenges' | 'profile'>('create');
@@ -413,6 +414,8 @@ export default function App() {
   const historyIndexRef = useRef(-1);
   const framesRef = useRef<Frame[]>(frames);
   const corePaletteAdapterCacheRef = useRef(new Map<string, { paletteEntries: Array<{ hex: string }>; colorToIndex: Map<string, number> }>());
+  const coreHistoryRef = useRef<CoreHistorySnapshot>({ entries: [], index: -1 });
+  const coreCommandStackRef = useRef<CommandStack | null>(null);
   const perfMetricsRef = useRef<{ strokeMs: number[]; fillMs: number[] }>({ strokeMs: [], fillMs: [] });
   const perfMetricCounterRef = useRef(0);
   const strokeDraftRef = useRef<string[] | null>(null);
@@ -448,6 +451,57 @@ export default function App() {
       fill: summarize(perfMetricsRef.current.fillMs),
     });
   }, []);
+
+  const cloneHistorySnapshot = useCallback((snapshot: CoreHistorySnapshot): CoreHistorySnapshot => ({
+    index: snapshot.index,
+    entries: snapshot.entries.map(entry => ({ frameIndex: entry.frameIndex, pixels: [...entry.pixels] })),
+  }), []);
+
+  if (!coreCommandStackRef.current) {
+    const noopSnapshot = {
+      id: 'history-bridge',
+      name: 'history-bridge',
+      width: 1,
+      height: 1,
+      palette: [],
+      frames: [{ id: 'frame-0', width: 1, height: 1, durationMs: 1, pixels: new Uint16Array(1) }],
+      activeFrameId: 'frame-0',
+      createdAt: '',
+      updatedAt: '',
+    };
+    const context: CommandContext = {
+      getSnapshot: () => noopSnapshot,
+      setSnapshot: () => {},
+    };
+    coreCommandStackRef.current = new CommandStack(context, 50);
+  }
+
+  const syncHistoryFromCore = useCallback(() => {
+    const snapshot = cloneHistorySnapshot(coreHistoryRef.current);
+    historyIndexRef.current = snapshot.index;
+    setHistory(snapshot.entries);
+    setHistoryIndex(snapshot.index);
+  }, [cloneHistorySnapshot]);
+
+  const executeCoreHistoryCommand = useCallback((nextSnapshot: CoreHistorySnapshot, label: string) => {
+    const commandStack = coreCommandStackRef.current;
+    if (!commandStack) return;
+
+    const previousSnapshot = cloneHistorySnapshot(coreHistoryRef.current);
+    const applySnapshot = (snapshot: CoreHistorySnapshot) => {
+      coreHistoryRef.current = cloneHistorySnapshot(snapshot);
+    };
+
+    const command: Command = {
+      id: `history_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      label,
+      apply: () => applySnapshot(nextSnapshot),
+      revert: () => applySnapshot(previousSnapshot),
+    };
+
+    commandStack.execute(command);
+    syncHistoryFromCore();
+  }, [cloneHistorySnapshot, syncHistoryFromCore]);
 
   const flushDraftToState = useCallback(() => {
     if (!strokeDraftRef.current || strokeFrameIndexRef.current === null) return;
@@ -950,32 +1004,40 @@ export default function App() {
   // Editor Handlers
   const isTeenMode = (stats?.level || 1) >= 10;
 
-  const saveToHistory = (pixels: string[], frameIndex: number = currentFrameIndex) => {
-    setHistory(prev => {
-      const trimmed = prev.slice(0, historyIndexRef.current + 1);
-      const nextEntry: HistoryEntry = { frameIndex, pixels: [...pixels] };
-      const lastEntry = trimmed[trimmed.length - 1];
-      if (lastEntry && lastEntry.frameIndex === nextEntry.frameIndex && lastEntry.pixels.join('|') === nextEntry.pixels.join('|')) {
-        const idx = trimmed.length - 1;
-        historyIndexRef.current = idx;
-        setHistoryIndex(idx);
-        return trimmed;
-      }
-      const appended = [...trimmed, nextEntry];
-      if (appended.length > 50) {
-        appended.shift();
-      }
-      const idx = appended.length - 1;
-      historyIndexRef.current = idx;
-      setHistoryIndex(idx);
-      return appended;
-    });
-  };
+  const saveToHistory = useCallback((pixels: string[], frameIndex: number = currentFrameIndex) => {
+    const snapshot = coreHistoryRef.current;
+    const trimmed = snapshot.entries
+      .slice(0, snapshot.index + 1)
+      .map(entry => ({ frameIndex: entry.frameIndex, pixels: [...entry.pixels] }));
 
-  const undo = () => {
-    if (!canUndo) return;
-    const prevEntry = history[historyIndex - 1];
+    const nextEntry: HistoryEntry = { frameIndex, pixels: [...pixels] };
+    const lastEntry = trimmed[trimmed.length - 1];
+    if (lastEntry && lastEntry.frameIndex === nextEntry.frameIndex && lastEntry.pixels.join('|') === nextEntry.pixels.join('|')) {
+      syncHistoryFromCore();
+      return;
+    }
+
+    const appended = [...trimmed, nextEntry];
+    if (appended.length > 50) {
+      appended.shift();
+    }
+
+    executeCoreHistoryCommand(
+      { entries: appended, index: appended.length - 1 },
+      'Pixel history save'
+    );
+  }, [currentFrameIndex, executeCoreHistoryCommand, syncHistoryFromCore]);
+
+  const undo = useCallback(() => {
+    const commandStack = coreCommandStackRef.current;
+    if (!commandStack?.canUndo) return;
+    if (!commandStack.undo()) return;
+    syncHistoryFromCore();
+
+    const snapshot = coreHistoryRef.current;
+    const prevEntry = snapshot.entries[snapshot.index];
     if (!prevEntry) return;
+
     setFrames(prev => {
       if (!prev[prevEntry.frameIndex]) return prev;
       const next = [...prev];
@@ -984,13 +1046,18 @@ export default function App() {
     });
     setCurrentFrameIndex(prevEntry.frameIndex);
     setPreviewFrameIndex(prevEntry.frameIndex);
-    setHistoryIndex(historyIndex - 1);
-  };
+  }, [syncHistoryFromCore]);
 
-  const redo = () => {
-    if (!canRedo) return;
-    const nextEntry = history[historyIndex + 1];
+  const redo = useCallback(() => {
+    const commandStack = coreCommandStackRef.current;
+    if (!commandStack?.canRedo) return;
+    if (!commandStack.redo()) return;
+    syncHistoryFromCore();
+
+    const snapshot = coreHistoryRef.current;
+    const nextEntry = snapshot.entries[snapshot.index];
     if (!nextEntry) return;
+
     setFrames(prev => {
       if (!prev[nextEntry.frameIndex]) return prev;
       const next = [...prev];
@@ -999,8 +1066,7 @@ export default function App() {
     });
     setCurrentFrameIndex(nextEntry.frameIndex);
     setPreviewFrameIndex(nextEntry.frameIndex);
-    setHistoryIndex(historyIndex + 1);
-  };
+  }, [syncHistoryFromCore]);
 
   useEffect(() => {
     if (history.length > 0) return;
