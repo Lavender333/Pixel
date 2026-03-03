@@ -1102,6 +1102,34 @@ export default function App() {
     return draft;
   }, [currentFrameIndex, gridSize, isLockedPixel, flushDraftToState]);
 
+  const handleFillArea = useCallback((startX: number, startY: number, fillColor: string) => {
+    if (isLockedPixel(startX, startY)) return null;
+    const frame = frames[currentFrameIndex];
+    if (!frame) return null;
+
+    const currentPixels = [...frame.pixels];
+    const { paletteEntries, registerColor } = buildCorePaletteIndex([currentPixels, [fillColor]]);
+    const durationMs = Math.round((1000 / Math.max(1, fps)) * (frame.duration ?? 1));
+    const coreFrame = colorsToCoreFrame(frame.id, currentPixels, durationMs, registerColor);
+    const filled = ToolEngine.floodFill(
+      coreFrame,
+      { x: startX, y: startY },
+      registerColor(fillColor),
+      (x, y) => isLockedPixel(x, y),
+    );
+    const nextPixels = corePixelsToColors(filled, paletteEntries);
+
+    setFrames(prev => {
+      const next = [...prev];
+      const current = next[currentFrameIndex];
+      if (!current) return prev;
+      next[currentFrameIndex] = { ...current, pixels: nextPixels };
+      return next;
+    });
+
+    return nextPixels;
+  }, [currentFrameIndex, fps, frames, isLockedPixel]);
+
   const handleStrokeComplete = (pixels: string[] | null, action: 'draw' | 'erase' | 'fill') => {
     if (strokeDraftRef.current && strokeFrameIndexRef.current === currentFrameIndex) {
       flushDraftToState();
@@ -2582,6 +2610,7 @@ export default function App() {
               showGrid={showGrid}
               onionSkinning={onionSkinning}
               onPixelChange={handlePixelChange}
+              onFillArea={handleFillArea}
               onStrokeComplete={handleStrokeComplete}
               onColorPick={handleColorPick}
               isLockedPixel={isLockedPixel}

@@ -58,10 +58,16 @@ export class ToolEngine {
     return next;
   }
 
-  static floodFill(frame: PixelFrame, start: DrawPoint, replacementColorIndex: number) {
+  static floodFill(
+    frame: PixelFrame,
+    start: DrawPoint,
+    replacementColorIndex: number,
+    isBlocked?: (x: number, y: number) => boolean,
+  ) {
     const { width, height } = frame;
     const next = new Uint16Array(frame.pixels);
     const startIndex = indexOf(width, start.x, start.y);
+    if (isBlocked?.(start.x, start.y)) return next;
     const targetColorIndex = next[startIndex];
     if (targetColorIndex === replacementColorIndex) return next;
 
@@ -69,6 +75,7 @@ export class ToolEngine {
 
     while (stack.length) {
       const point = stack.pop()!;
+      if (isBlocked?.(point.x, point.y)) continue;
       const idx = indexOf(width, point.x, point.y);
       if (next[idx] !== targetColorIndex) continue;
 

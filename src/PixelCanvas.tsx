@@ -39,6 +39,7 @@ interface PixelCanvasProps {
   showGrid: boolean;
   onionSkinning: boolean;
   onPixelChange: (x: number, y: number, color: string) => string[] | null;
+  onFillArea?: (startX: number, startY: number, color: string) => string[] | null;
   onStrokeComplete?: (pixels: string[] | null, action: 'draw' | 'erase' | 'fill') => void;
   onColorPick: (color: string) => void;
   onZoomChange?: (zoom: number) => void;
@@ -63,6 +64,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   showGrid,
   onionSkinning,
   onPixelChange,
+  onFillArea,
   onStrokeComplete,
   onColorPick,
   onZoomChange,
@@ -344,7 +346,12 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
 
     if (tool === 'fill') {
       toolUsedRef.current = 'fill';
-      floodFill(x, y, selectedColor);
+      if (onFillArea) {
+        const pixels = onFillArea(x, y, selectedColor);
+        if (pixels) lastPixelsRef.current = pixels;
+      } else {
+        floodFill(x, y, selectedColor);
+      }
       commitStroke('fill');
       return;
     }
@@ -357,7 +364,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     const useSize = tool === 'eraser' ? eraserSize : brushSize;
     const color = tool === 'eraser' ? 'transparent' : selectedColor;
     drawBrush(x, y, color, useSize);
-}, [tool, selection.active, getSelectionRect, liftSelection, stampFloat, resetSelection, drawSelectionOverlay, frames, currentFrameIndex, gridSize, onColorPick, selectedColor, commitStroke, brushSize, eraserSize, drawBrush, getCanvasCoords]);
+}, [tool, selection.active, getSelectionRect, liftSelection, stampFloat, resetSelection, drawSelectionOverlay, frames, currentFrameIndex, gridSize, onColorPick, selectedColor, onFillArea, commitStroke, brushSize, eraserSize, drawBrush, getCanvasCoords]);
 
   const moveInteraction = useCallback((clientX: number, clientY: number) => {
     const { x, y } = getCanvasCoords(clientX, clientY);
