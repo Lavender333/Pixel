@@ -1061,12 +1061,10 @@ export default function App() {
         }
       };
 
-      const [pData, sData, cData, subData] = await Promise.all([
-        fetchWithTimeout('/api/projects'),
-        fetchWithTimeout('/api/stats'),
-        fetchWithTimeout('/api/challenges'),
-        fetchWithTimeout('/api/submissions')
-      ]);
+      const pData = null;
+      const sData = null;
+      const cData = null;
+      const subData = null;
 
       if (pData) setProjects(pData.map((p: any) => ({ ...p, ...JSON.parse(p.data) })));
       if (sData) setStats(sData);
