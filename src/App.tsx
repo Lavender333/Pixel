@@ -56,6 +56,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
+import { PixelSpriteAudio } from './PixelSpriteAudio';
 import { TEMPLATE_DEFINITIONS, buildColorableMask, getTemplateLockMask, getTemplatePixels, TemplateCategory, TemplateDefinition } from './templateData';
 import { Frame, Project, ProjectData, UserStats, Challenge, Submission } from './types';
 import { PixelCanvas, PixelCanvasHandle } from './PixelCanvas';
@@ -341,7 +342,8 @@ export default function App() {
 
   // Sound System
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const [softMode, setSoftMode] = useState(false);
+  const audioEngineRef = useRef<PixelSpriteAudio | null>(null);
   const pixelCanvasRef = useRef<PixelCanvasHandle | null>(null);
   const frameNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const studioNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -388,45 +390,56 @@ export default function App() {
     resetStrokeDraft();
   }, [currentFrameIndex, resetStrokeDraft]);
 
-  const initAudioContext = () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+  useEffect(() => {
+    audioEngineRef.current = new PixelSpriteAudio();
+  }, []);
+
+  useEffect(() => {
+    audioEngineRef.current?.setEnabled(soundEnabled);
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    audioEngineRef.current?.setSoftMode(softMode);
+  }, [softMode]);
+
+  const playDrawSound = () => audioEngineRef.current?.click();
+  const playEraseSound = () => audioEngineRef.current?.click();
+  const playSelectSound = () => audioEngineRef.current?.click();
+  const playNudgeSound = () => audioEngineRef.current?.click();
+  const playSaveSound = () => audioEngineRef.current?.saveSuccess();
+  const playAchievementSound = () => audioEngineRef.current?.exportComplete();
+  const playAddLayerSound = () => audioEngineRef.current?.addLayer();
+  const playErrorSound = () => audioEngineRef.current?.error();
+
+  const toggleSound = () => {
+    const engine = audioEngineRef.current;
+    if (!engine) {
+      setSoundEnabled(prev => !prev);
+      return;
     }
-    return audioContextRef.current;
+
+    if (soundEnabled) {
+      engine.toggleOff();
+      setTimeout(() => {
+        engine.setEnabled(false);
+        setSoundEnabled(false);
+      }, 90);
+      return;
+    }
+
+    engine.setEnabled(true);
+    setSoundEnabled(true);
+    engine.toggleOn();
   };
 
-  const playSound = (frequency: number, duration: number, type: OscillatorType = 'sine', volume: number = 0.1) => {
-    if (!soundEnabled) return;
-    
-    try {
-      const audioContext = initAudioContext();
-      if (audioContext.state === 'suspended') {
-        void audioContext.resume();
-      }
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
-      oscillator.type = type;
-      
-      gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-      
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + duration);
-    } catch (error) {
-      console.warn('Audio playback failed:', error);
-    }
+  const toggleSoftMode = () => {
+    setSoftMode(prev => {
+      const next = !prev;
+      audioEngineRef.current?.setSoftMode(next);
+      return next;
+    });
+    audioEngineRef.current?.click();
   };
-  const playDrawSound = () => playSound(800, 0.05, 'square', 0.05);
-  const playEraseSound = () => playSound(200, 0.1, 'sawtooth', 0.03);
-  const playSelectSound = () => playSound(600, 0.1, 'sine', 0.08);
-  const playNudgeSound = () => playSound(400, 0.08, 'triangle', 0.06);
-  const playSaveSound = () => playSound(1200, 0.2, 'sine', 0.07);
-  const playAchievementSound = () => playSound(1500, 0.3, 'sine', 0.1);
   const showFrameNotice = (message: string) => {
     if (frameNoticeTimeout.current) {
       clearTimeout(frameNoticeTimeout.current);
@@ -985,17 +998,20 @@ export default function App() {
   const handleAddFrame = () => {
     if (frames.length >= MAX_FRAMES) {
       showFrameNotice(`Frame limit reached (${MAX_FRAMES})`);
+      playErrorSound();
       return;
     }
     const newFrame = createBlankFrame();
     setFrames([...frames, newFrame]);
     setCurrentFrameIndex(frames.length);
     setPreviewFrameIndex(frames.length);
+    playAddLayerSound();
   };
 
   const handleDuplicateFrame = (index: number) => {
     if (frames.length >= MAX_FRAMES) {
       showFrameNotice(`Frame limit reached (${MAX_FRAMES})`);
+      playErrorSound();
       return;
     }
     const source = frames[index];
@@ -1010,11 +1026,13 @@ export default function App() {
     setFrames(newFrames);
     setCurrentFrameIndex(index + 1);
     setPreviewFrameIndex(index + 1);
+    playAddLayerSound();
   };
 
   const handleDeleteFrame = (index: number) => {
     if (frames.length <= 1) {
       showFrameNotice('At least one frame is required');
+      playErrorSound();
       return;
     }
     const newFrames = frames.filter((_, idx) => idx !== index);
@@ -1789,6 +1807,7 @@ export default function App() {
       const canvas = renderFrameCanvas(activeFrame, 20);
       if (!canvas) return;
       downloadDataUrl(`${safeName}.png`, canvas.toDataURL('image/png'));
+      audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
       return;
     }
@@ -1797,6 +1816,7 @@ export default function App() {
       const canvas = renderFrameCanvas(activeFrame, 20, '#ffffff');
       if (!canvas) return;
       downloadDataUrl(`${safeName}.jpg`, canvas.toDataURL('image/jpeg', 0.92));
+      audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
       return;
     }
@@ -1838,6 +1858,7 @@ export default function App() {
       } else {
         downloadDataUrl(`${safeName}-sheet.png`, canvas.toDataURL('image/png'));
       }
+      audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
       return;
     }
@@ -1867,6 +1888,7 @@ export default function App() {
       printCtx.fillText(projectName, printCanvas.width / 2, 220);
 
       downloadDataUrl(`${safeName}-print.png`, printCanvas.toDataURL('image/png'));
+      audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
       return;
     }
@@ -1878,6 +1900,7 @@ export default function App() {
         exportedAt: new Date().toISOString(),
       };
       downloadTextFile(`${safeName}-palette.json`, JSON.stringify(paletteData, null, 2), 'application/json');
+      audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
       return;
     }
@@ -2393,11 +2416,18 @@ export default function App() {
               <Layers className="w-4 h-4" />
             </button>
             <button 
-              onClick={() => setSoundEnabled(prev => !prev)}
+              onClick={toggleSound}
               className={`p-2 rounded-lg transition-all ${soundEnabled ? 'bg-green-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
               title="Sound Effects"
             >
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={toggleSoftMode}
+              className={`px-2 py-1.5 rounded-lg transition-all border text-[8px] font-bold uppercase tracking-widest ${softMode ? 'bg-blue-500/30 text-blue-200 border-blue-400/60' : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-white'}`}
+              title="Soft Mode"
+            >
+              Soft
             </button>
             <div className="h-8 w-[1px] bg-zinc-900 mx-1" />
             <div className="relative">
