@@ -47,7 +47,7 @@ import {
   Grid,
   Coins,
   PiggyBank,
-  Map,
+  Map as MapIcon,
   Gamepad2,
   PlugZap,
   ShoppingBag,
@@ -2822,7 +2822,7 @@ export default function App() {
             onClick={() => travelToStudio('creator-hq')}
             className="px-3 py-2 text-xs flex items-center gap-2 border border-zinc-800"
           >
-            <Map className="w-3 h-3" /> Studio HQ
+            <MapIcon className="w-3 h-3" /> Studio HQ
           </Button>
           <Button 
             variant="ghost" 
@@ -3663,7 +3663,7 @@ export default function App() {
           >
             <div className="flex flex-col gap-6 relative z-10">
               <div className="flex items-center gap-3 text-purple-300 text-[10px] font-black uppercase tracking-widest">
-                <Map className="w-4 h-4" /> Studio Passport
+                <MapIcon className="w-4 h-4" /> Studio Passport
               </div>
               <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
                 <div>
@@ -3779,7 +3779,7 @@ export default function App() {
                     onClick={() => handleTravel(destination.id)}
                     className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-white/30"
                   >
-                    <Map className="w-3 h-3" /> Warp Now
+                    <MapIcon className="w-3 h-3" /> Warp Now
                   </button>
                 </motion.div>
               );
@@ -4334,7 +4334,7 @@ export default function App() {
       {/* Bottom Navigation */}
       <nav className="h-16 border-t border-zinc-900 bg-zinc-950/80 backdrop-blur-xl flex items-center px-4 gap-2 flex-shrink-0 pb-[max(env(safe-area-inset-bottom),0px)]">
         <TabButton active={activeTab === 'create'} onClick={() => setActiveTab('create')} icon={<PlusCircle className="w-5 h-5" />} label="Create" />
-        <TabButton active={activeTab === 'studio'} onClick={() => setActiveTab('studio')} icon={<Map className="w-5 h-5" />} label="Studio" />
+        <TabButton active={activeTab === 'studio'} onClick={() => setActiveTab('studio')} icon={<MapIcon className="w-5 h-5" />} label="Studio" />
         <TabButton active={activeTab === 'closet'} onClick={() => setActiveTab('closet')} icon={<Shirt className="w-5 h-5" />} label="Closet" />
         <TabButton active={activeTab === 'challenges'} onClick={() => setActiveTab('challenges')} icon={<Target className="w-5 h-5" />} label="Challenges" />
         <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User className="w-5 h-5" />} label="Profile" />
