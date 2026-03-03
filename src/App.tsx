@@ -407,6 +407,7 @@ export default function App() {
   const frameNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const studioNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const achievementTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasTrackedCanvasStartedRef = useRef(false);
   const historyIndexRef = useRef(-1);
   const framesRef = useRef<Frame[]>(frames);
   const strokeDraftRef = useRef<string[] | null>(null);
@@ -1107,6 +1108,14 @@ export default function App() {
       resetStrokeDraft();
       return;
     }
+
+    if (!hasTrackedCanvasStartedRef.current) {
+      hasTrackedCanvasStartedRef.current = true;
+      trackEvent('canvas_started', {
+        event_category: 'engagement',
+      });
+    }
+
     saveToHistory(pixels);
     updateStreak();
     if (action === 'draw') {
@@ -2027,6 +2036,7 @@ export default function App() {
       downloadDataUrl(`${safeName}.png`, canvas.toDataURL('image/png'));
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('sprite_exported', { event_category: 'creation', format: 'png' });
       trackEvent('export_completed', { format: 'png', frame_count: frames.length });
       return;
     }
@@ -2037,6 +2047,8 @@ export default function App() {
       downloadDataUrl(`${safeName}.jpg`, canvas.toDataURL('image/jpeg', 0.92));
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('sprite_exported', { event_category: 'creation', format: 'jpeg' });
+      trackEvent('share_clicked', { event_category: 'growth', channel: 'jpeg_export' });
       trackEvent('export_completed', { format: 'jpeg', frame_count: frames.length });
       trackEvent('share_intent', { channel: 'jpeg_export' });
       return;
@@ -2076,12 +2088,14 @@ export default function App() {
       if (format === 'gif') {
         showFrameNotice('Animated GIF exports as sprite sheet PNG for now');
         downloadDataUrl(`${safeName}-animated.png`, canvas.toDataURL('image/png'));
+        trackEvent('share_clicked', { event_category: 'growth', channel: 'gif_export_fallback' });
         trackEvent('share_intent', { channel: 'gif_export_fallback' });
       } else {
         downloadDataUrl(`${safeName}-sheet.png`, canvas.toDataURL('image/png'));
       }
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('sprite_exported', { event_category: 'creation', format });
       trackEvent('export_completed', { format, frame_count: frames.length });
       return;
     }
@@ -2113,6 +2127,7 @@ export default function App() {
       downloadDataUrl(`${safeName}-print.png`, printCanvas.toDataURL('image/png'));
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('sprite_exported', { event_category: 'creation', format: 'print' });
       trackEvent('export_completed', { format: 'print', frame_count: frames.length });
       return;
     }
@@ -2126,6 +2141,7 @@ export default function App() {
       downloadTextFile(`${safeName}-palette.json`, JSON.stringify(paletteData, null, 2), 'application/json');
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('sprite_exported', { event_category: 'creation', format: 'palette' });
       trackEvent('export_completed', { format: 'palette', color_count: palette.length });
       return;
     }
@@ -2153,6 +2169,9 @@ export default function App() {
       playSaveSound();
       addXp(10, 'save');
       updateStreak();
+      trackEvent('sprite_saved', {
+        event_category: 'creation',
+      });
       trackEvent('project_saved', {
         grid_size: gridSize,
         frame_count: frames.length,
