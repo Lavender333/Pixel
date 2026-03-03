@@ -2517,6 +2517,22 @@ export default function App() {
           </div>
 
           <div className="px-2 py-2 flex flex-col items-center gap-1 mt-auto">
+            <div className="flex items-center gap-1 mb-1">
+              <button
+                onClick={() => handleZoomChange(zoom - 0.2)}
+                className="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white"
+                title="Zoom Out"
+              >
+                -
+              </button>
+              <button
+                onClick={() => handleZoomChange(zoom + 0.2)}
+                className="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white"
+                title="Zoom In"
+              >
+                +
+              </button>
+            </div>
             <input 
               type="range" min={MIN_CANVAS_ZOOM} max={MAX_CANVAS_ZOOM} step="0.1" value={zoom} 
               onChange={(e) => handleZoomChange(Number(e.target.value))}
@@ -2794,35 +2810,6 @@ export default function App() {
             )}
           </AnimatePresence>
       </div>
-
-      {/* Floating Preview Window */}
-      {showPreview && (
-        <motion.div 
-          drag
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="absolute left-24 top-24 w-48 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden z-50"
-        >
-          <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/50">
-            <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">Live Preview</span>
-            <button onClick={() => { setShowPreview(false); setIsPlaying(false); }} className="text-zinc-600 hover:text-white">
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="aspect-square bg-zinc-950 p-4 flex items-center justify-center checkerboard">
-            <div className="grid w-full h-full pixel-grid" style={{ gridTemplateColumns: `repeat(${gridSize}, 1fr)` }}>
-              {frames[previewFrameIndex].pixels.map((c, i) => (
-                <div key={i} style={{ backgroundColor: c }} />
-              ))}
-            </div>
-          </div>
-          <div className="p-2 flex justify-center gap-2 bg-zinc-950/50">
-            <button onClick={() => setIsPlaying(!isPlaying)} className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white">
-              {isPlaying ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
-            </button>
-          </div>
-        </motion.div>
-      )}
 
       {/* Full Preview Modal */}
       <AnimatePresence>

@@ -521,6 +521,13 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     endInteraction();
   }, [endInteraction]);
 
+  const handleWheelZoom = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+    if (!onZoomChange) return;
+    e.preventDefault();
+    const zoomStep = e.deltaY < 0 ? 0.2 : -0.2;
+    onZoomChange(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + zoomStep)));
+  }, [onZoomChange, zoom]);
+
   const floodFill = useCallback((startX: number, startY: number, newColor: string) => {
     const frame = frames[currentFrameIndex];
     if (!frame) return;
@@ -660,6 +667,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerUp}
+        onWheel={handleWheelZoom}
       />
       <canvas
         ref={selectionCanvasRef}
