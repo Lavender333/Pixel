@@ -122,6 +122,23 @@ const MAX_STUDIO_FEED_ENTRIES = 8;
 
 type IconComponent = React.ComponentType<{ className?: string }>;
 
+type AnimationPreset = 'bounce' | 'blink' | 'float' | 'pulse' | 'shake' | 'walk_cat' | 'spin_star' | 'bounce_ball' | 'pixel_fire' | 'neon_heart' | 'walk_cycle' | 'y2k_glitter';
+
+const ANIMATION_PRESET_OPTIONS: Array<{ key: AnimationPreset; label: string }> = [
+  { key: 'bounce', label: 'BOUNCE' },
+  { key: 'float', label: 'FLOAT' },
+  { key: 'blink', label: 'BLINK' },
+  { key: 'pulse', label: 'PULSE' },
+  { key: 'shake', label: 'SHAKE' },
+  { key: 'walk_cat', label: 'CAT' },
+  { key: 'spin_star', label: 'STAR' },
+  { key: 'bounce_ball', label: 'BALL' },
+  { key: 'pixel_fire', label: 'FIRE' },
+  { key: 'neon_heart', label: 'HEART' },
+  { key: 'walk_cycle', label: 'WALK' },
+  { key: 'y2k_glitter', label: 'GLITTER' },
+];
+
 const STUDIO_DESTINATIONS: Array<{
   id: string;
   title: string;
@@ -292,6 +309,7 @@ export default function App() {
   const [fps, setFps] = useState(8);
   const [showPreview, setShowPreview] = useState(true); // Default to true for the mini-preview
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showAnimationTools, setShowAnimationTools] = useState(false);
   const [showNudgePanel, setShowNudgePanel] = useState(false);
   const [selection, setSelection] = useState<{ active: boolean; x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
@@ -359,7 +377,6 @@ export default function App() {
   const playEraseSound = () => playSound(200, 0.1, 'sawtooth', 0.03);
   const playSelectSound = () => playSound(600, 0.1, 'sine', 0.08);
   const playNudgeSound = () => playSound(400, 0.08, 'triangle', 0.06);
-  const playAnimationSound = () => playSound(1000, 0.15, 'sine', 0.04);
   const playSaveSound = () => playSound(1200, 0.2, 'sine', 0.07);
   const playAchievementSound = () => playSound(1500, 0.3, 'sine', 0.1);
   const showFrameNotice = (message: string) => {
@@ -999,7 +1016,7 @@ export default function App() {
     });
   };
 
-  const applyAnimationPreset = (preset: 'bounce' | 'blink' | 'float' | 'pulse' | 'shake' | 'walk_cat' | 'spin_star' | 'bounce_ball' | 'pixel_fire' | 'neon_heart' | 'walk_cycle' | 'y2k_glitter') => {
+  const applyAnimationPreset = (preset: AnimationPreset) => {
     const currentFrame = frames[currentFrameIndex];
     const basePixels = [...currentFrame.pixels];
     const baseBasePixels = currentFrame.basePixels ? [...currentFrame.basePixels] : undefined;
@@ -1518,7 +1535,9 @@ export default function App() {
 
     setFrames(newFrames);
     setCurrentFrameIndex(0);
-    setIsPlaying(true);
+    setPreviewFrameIndex(0);
+    setIsPlaying(false);
+    setShowAnimationTools(false);
     addXp(5, 'animation');
     updateStreak();
   };
@@ -2110,6 +2129,16 @@ export default function App() {
               className="absolute left-4 top-4 w-32 h-32 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden z-40"
             >
               <div className="absolute top-1 left-2 text-[8px] font-bold text-zinc-500 uppercase tracking-widest z-10">Live Preview</div>
+              <button
+                onClick={() => {
+                  setShowPreview(false);
+                  setIsPlaying(false);
+                }}
+                className="absolute top-1 right-1 z-10 text-zinc-500 hover:text-white"
+                title="Close preview"
+              >
+                <X className="w-3 h-3" />
+              </button>
               <div 
                 className="grid w-full h-full"
                 style={{ gridTemplateColumns: `repeat(${gridSize}, 1fr)` }}
@@ -2134,7 +2163,6 @@ export default function App() {
             <button 
               onClick={() => {
                 setIsPlaying(!isPlaying);
-                playAnimationSound();
               }}
               className={`p-2 rounded-lg transition-all ${isPlaying ? 'bg-red-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
             >
@@ -2161,20 +2189,27 @@ export default function App() {
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
             <div className="h-8 w-[1px] bg-zinc-900 mx-1" />
-            <div className="flex gap-1 bg-zinc-900 p-1 rounded-lg items-center">
-              <Wand2 className="w-3 h-3 text-purple-400 mx-1" />
-              <button onClick={() => applyAnimationPreset('bounce')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">BOUNCE</button>
-              <button onClick={() => applyAnimationPreset('float')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">FLOAT</button>
-              <button onClick={() => applyAnimationPreset('blink')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">BLINK</button>
-              <button onClick={() => applyAnimationPreset('pulse')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">PULSE</button>
-              <button onClick={() => applyAnimationPreset('shake')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">SHAKE</button>
-              <button onClick={() => applyAnimationPreset('walk_cat')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">CAT</button>
-              <button onClick={() => applyAnimationPreset('spin_star')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">STAR</button>
-              <button onClick={() => applyAnimationPreset('bounce_ball')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">BALL</button>
-              <button onClick={() => applyAnimationPreset('pixel_fire')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">FIRE</button>
-              <button onClick={() => applyAnimationPreset('neon_heart')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">HEART</button>
-              <button onClick={() => applyAnimationPreset('walk_cycle')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">WALK</button>
-              <button onClick={() => applyAnimationPreset('y2k_glitter')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">GLITTER</button>
+            <div className="relative">
+              <button
+                onClick={() => setShowAnimationTools(prev => !prev)}
+                className={`p-2 rounded-lg transition-all border ${showAnimationTools ? 'bg-purple-600 text-white border-purple-400' : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-white'}`}
+                title="Animation Presets"
+              >
+                <Wand2 className="w-4 h-4" />
+              </button>
+              {showAnimationTools && (
+                <div className="absolute bottom-12 left-0 z-50 w-64 p-2 rounded-xl border border-zinc-800 bg-zinc-950/95 shadow-2xl grid grid-cols-3 gap-1">
+                  {ANIMATION_PRESET_OPTIONS.map(option => (
+                    <button
+                      key={option.key}
+                      onClick={() => applyAnimationPreset(option.key)}
+                      className="px-2 py-1.5 text-[8px] font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-all"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <button 
               onClick={() => travelToStudio('motion-lab')}
@@ -2352,7 +2387,7 @@ export default function App() {
         >
           <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/50">
             <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">Live Preview</span>
-            <button onClick={() => setShowPreview(false)} className="text-zinc-600 hover:text-white">
+            <button onClick={() => { setShowPreview(false); setIsPlaying(false); }} className="text-zinc-600 hover:text-white">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -2393,7 +2428,10 @@ export default function App() {
                   </p>
                 </div>
                 <button 
-                  onClick={() => setShowPreviewModal(false)}
+                  onClick={() => {
+                    setShowPreviewModal(false);
+                    setIsPlaying(false);
+                  }}
                   className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
                 >
                   <X className="w-5 h-5" />
