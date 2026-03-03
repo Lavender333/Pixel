@@ -41,6 +41,7 @@ interface PixelCanvasProps {
   onPixelChange: (x: number, y: number, color: string) => string[] | null;
   onStrokeComplete?: (pixels: string[] | null, action: 'draw' | 'erase' | 'fill') => void;
   onColorPick: (color: string) => void;
+  isLockedPixel?: (x: number, y: number) => boolean;
   onSelectionChange?: (selection: { active: boolean; x0: number; y0: number; x1: number; y1: number } | null) => void;
 }
 
@@ -61,6 +62,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   onPixelChange,
   onStrokeComplete,
   onColorPick,
+  isLockedPixel,
   onSelectionChange,
 }, ref) => {
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -117,6 +119,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
 
   const stampPixel = useCallback((x: number, y: number, color: string, skipMirror = false) => {
     if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) return;
+    if (isLockedPixel?.(x, y)) return;
     const pixels = onPixelChange(x, y, color);
     if (pixels) lastPixelsRef.current = pixels;
     if (!skipMirror && mirrorMode) {
@@ -125,7 +128,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
         stampPixel(mirrorX, y, color, true);
       }
     }
-  }, [gridSize, mirrorMode, onPixelChange]);
+  }, [gridSize, isLockedPixel, mirrorMode, onPixelChange]);
 
   const drawBrush = useCallback((x: number, y: number, color: string, size: number) => {
     const half = Math.floor(size / 2);
@@ -446,6 +449,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   const floodFill = useCallback((startX: number, startY: number, newColor: string) => {
     const frame = frames[currentFrameIndex];
     if (!frame) return;
+    if (isLockedPixel?.(startX, startY)) return;
     const pixels = [...frame.pixels];
     const targetColor = pixels[startY * gridSize + startX];
     if (targetColor === newColor) return;
@@ -458,12 +462,13 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
       if (visited.has(key)) continue;
       visited.add(key);
       if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) continue;
+      if (isLockedPixel?.(x, y)) continue;
       if (pixels[y * gridSize + x] !== targetColor) continue;
       pixels[y * gridSize + x] = newColor;
       stampPixel(x, y, newColor);
       stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
-  }, [frames, currentFrameIndex, gridSize, stampPixel]);
+  }, [frames, currentFrameIndex, gridSize, isLockedPixel, stampPixel]);
 
   useEffect(() => {
     const canvas = mainCanvasRef.current;

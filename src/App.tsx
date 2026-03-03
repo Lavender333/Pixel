@@ -56,7 +56,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
-import { getTemplatePixels } from './templateData';
+import { TEMPLATE_DEFINITIONS, buildColorableMask, getTemplateLockMask, getTemplatePixels, TemplateDefinition } from './templateData';
 import { Frame, Project, ProjectData, UserStats, Challenge, Submission } from './types';
 import { PixelCanvas, PixelCanvasHandle } from './PixelCanvas';
 
@@ -68,16 +68,39 @@ const STARTER_PALETTE = [
   '#ffcccc', '#ccffcc', '#ccccff', '#ffffcc', '#ffccff', '#ccffff', '#884400', '#442200'
 ];
 
-const TEMPLATES = [
-  { id: 'blank', name: 'Blank Canvas', icon: <PlusCircle className="w-6 h-6" />, size: 32 },
-  { id: 'face', name: 'Pixel Face', icon: <User className="w-6 h-6" />, size: 32 },
-  { id: 'body', name: 'Full Body', icon: <User className="w-6 h-6" />, size: 32 },
-  { id: 'sneaker', name: 'Sneaker Base', icon: <Target className="w-6 h-6" />, size: 32 },
-  { id: 'pet', name: 'Pet Base', icon: <Sparkles className="w-6 h-6" />, size: 32 },
-  { id: 'room', name: 'Mini Room', icon: <Layout className="w-6 h-6" />, size: 32 },
-  { id: 'hoodie', name: 'Hoodie', icon: <Shirt className="w-6 h-6" />, size: 32 },
-  { id: 'pro', name: 'Pro Canvas', icon: <Crown className="w-6 h-6" />, size: 64, locked: true },
-];
+type TemplateCard = TemplateDefinition & { icon: React.ReactNode };
+
+const templateIconByCategory: Record<string, React.ReactNode> = {
+  blank: <PlusCircle className="w-6 h-6" />,
+  cat: <Sparkles className="w-6 h-6" />,
+  dog: <Sparkles className="w-6 h-6" />,
+  ghost: <Sparkles className="w-6 h-6" />,
+  dragon: <Crown className="w-6 h-6" />,
+  character: <User className="w-6 h-6" />,
+  alien: <Zap className="w-6 h-6" />,
+  sneaker: <Target className="w-6 h-6" />,
+  sneaker_base: <Target className="w-6 h-6" />,
+  skate_deck: <Layout className="w-6 h-6" />,
+  hoodie: <Shirt className="w-6 h-6" />,
+  bag: <ShoppingBag className="w-6 h-6" />,
+  cap: <ShieldCheck className="w-6 h-6" />,
+  sword: <Wand2 className="w-6 h-6" />,
+  shield: <ShieldCheck className="w-6 h-6" />,
+  badge: <BadgeDollarSign className="w-6 h-6" />,
+  cozy_room: <Layout className="w-6 h-6" />,
+  space_scene: <Sparkles className="w-6 h-6" />,
+  mini_forest: <Sparkles className="w-6 h-6" />,
+  city_night: <Monitor className="w-6 h-6" />,
+  kawaii_bunny: <Palette className="w-6 h-6" />,
+  pixel_heart: <Flame className="w-6 h-6" />,
+  lucky_star: <Star className="w-6 h-6" />,
+  pro: <Crown className="w-6 h-6" />,
+};
+
+const TEMPLATES: TemplateCard[] = TEMPLATE_DEFINITIONS.map(template => ({
+  ...template,
+  icon: templateIconByCategory[template.id] ?? <Palette className="w-6 h-6" />,
+}));
 
 const TRENDING_PALETTES = [
   { name: 'Y2K', colors: ['#FF00FF', '#00FFFF', '#FFFF00', '#FF0088', '#8800FF'] },
@@ -272,6 +295,11 @@ export default function App() {
   const [showGrid, setShowGrid] = useState(true);
   const [brushSize, setBrushSize] = useState<1 | 2 | 4>(1);
   const [eraserSize, setEraserSize] = useState<1 | 3 | 6>(3);
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
+  const [lockMask, setLockMask] = useState<Uint8Array | null>(null);
+  const [colorableMask, setColorableMask] = useState<Uint8Array | null>(null);
+  const [templateCompletionAwarded, setTemplateCompletionAwarded] = useState(false);
+  const [goldFlash, setGoldFlash] = useState(false);
   const [coins, setCoins] = useState(1250);
   const [gems, setGems] = useState(18);
   const [ownedPlugins, setOwnedPlugins] = useState<string[]>(['layer-mixer']);
@@ -623,6 +651,12 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [isPlaying, fps, frames, currentFrameIndex]);
 
+  useEffect(() => {
+    if (!goldFlash) return;
+    const timeout = setTimeout(() => setGoldFlash(false), 450);
+    return () => clearTimeout(timeout);
+  }, [goldFlash]);
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -769,7 +803,45 @@ export default function App() {
     setFrames(newFrames);
   };
 
+  const isLockedPixel = useCallback((x: number, y: number) => {
+    if (!lockMask) return false;
+    if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) return false;
+    return lockMask[y * gridSize + x] === 1;
+  }, [gridSize, lockMask]);
+
+  const checkTemplateCompletion = useCallback((pixels: string[]) => {
+    if (!colorableMask || templateCompletionAwarded) return;
+    let totalColorable = 0;
+    let emptyColorable = 0;
+
+    for (let i = 0; i < colorableMask.length; i++) {
+      if (colorableMask[i] === 0) continue;
+      totalColorable++;
+      if (pixels[i] === 'transparent') {
+        emptyColorable++;
+      }
+    }
+
+    if (totalColorable === 0) return;
+    const emptyRatio = emptyColorable / totalColorable;
+    if (emptyRatio >= 0.05) return;
+
+    setTemplateCompletionAwarded(true);
+    setGoldFlash(true);
+    setCoins(prev => prev + 25);
+    addXp(25, 'template-complete');
+    addStudioFeedEntry('Color-in complete • +25 XP • +25 coins');
+    showFrameNotice('Template complete! +25 XP +25 coins');
+    confetti({
+      particleCount: 180,
+      spread: 70,
+      origin: { y: 0.55 },
+      colors: ['#FFD76A', '#F7B733', '#FFF2B2', '#E5A100'],
+    });
+  }, [addXp, addStudioFeedEntry, colorableMask, showFrameNotice, templateCompletionAwarded]);
+
   const handlePixelChange = useCallback((x: number, y: number, color: string) => {
+    if (isLockedPixel(x, y)) return null;
     let updatedPixels: string[] | null = null;
     setFrames(prev => {
       const next = [...prev];
@@ -785,7 +857,7 @@ export default function App() {
       return next;
     });
     return updatedPixels;
-  }, [currentFrameIndex, gridSize]);
+  }, [currentFrameIndex, gridSize, isLockedPixel]);
 
   const handleStrokeComplete = (pixels: string[] | null, action: 'draw' | 'erase' | 'fill') => {
     if (!pixels) return;
@@ -801,6 +873,7 @@ export default function App() {
       playDrawSound();
       addXp(2, 'fill');
     }
+    checkTemplateCompletion(pixels);
   };
 
   const handleColorPick = (color: string) => {
@@ -1632,11 +1705,20 @@ export default function App() {
     return canvas.toDataURL();
   };
 
-  const startWithTemplate = (template: any) => {
+  const startWithTemplate = (template: TemplateCard) => {
     const basePixels = getTemplatePixels(template.id, template.size);
     const emptyPixels = Array(template.size * template.size).fill('transparent');
+    const nextLockMask = getTemplateLockMask(template.id, template.size);
     setGridSize(template.size);
     setFrames([{ id: Math.random().toString(36).substr(2, 9), pixels: emptyPixels, basePixels }]);
+    setActiveTemplateId(template.id);
+    setLockMask(nextLockMask);
+    setColorableMask(nextLockMask ? buildColorableMask(template.size, nextLockMask) : null);
+    setTemplateCompletionAwarded(false);
+    setGoldFlash(false);
+    if (template.palette?.length) {
+      setPalette(prev => Array.from(new Set([...template.palette!, ...prev])));
+    }
     setProjectName(template.name);
     setShowTemplates(false);
     setOnboarding(false);
@@ -1708,7 +1790,7 @@ export default function App() {
                   key={t.id}
                   disabled={t.locked && !isTeenMode}
                   onClick={() => startWithTemplate(t)}
-                  className={`bg-zinc-900 border border-zinc-800 p-6 rounded-3xl hover:border-purple-500 transition-all flex flex-col items-center gap-4 group relative ${t.locked && !isTeenMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+                  className={`bg-zinc-900 border p-6 rounded-3xl hover:border-purple-500 transition-all flex flex-col items-center gap-4 group relative ${activeTemplateId === t.id ? 'border-purple-500' : 'border-zinc-800'} ${t.locked && !isTeenMode ? 'opacity-40 cursor-not-allowed' : ''}`}
                 >
                   {t.locked && !isTeenMode && (
                     <div className="absolute top-3 right-3">
@@ -1722,6 +1804,9 @@ export default function App() {
                     <span className="font-bold text-sm text-zinc-300">{t.name}</span>
                     <span className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest mt-1">
                       {t.size}x{t.size} {t.locked && !isTeenMode ? '(Lvl 10)' : ''}
+                    </span>
+                    <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
+                      {t.kind === 'color-in' ? 'Lock + Fill' : t.category}
                     </span>
                   </div>
                 </button>
@@ -1832,9 +1917,21 @@ export default function App() {
               onPixelChange={handlePixelChange}
               onStrokeComplete={handleStrokeComplete}
               onColorPick={handleColorPick}
+              isLockedPixel={isLockedPixel}
               onSelectionChange={handleSelectionChange}
             />
           </motion.div>
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {goldFlash && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 pointer-events-none bg-gradient-to-br from-yellow-300/20 via-amber-300/10 to-yellow-500/20 z-30"
+            />
+          )}
         </AnimatePresence>
 
         {/* Nudge Panel */}
