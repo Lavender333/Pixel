@@ -12,8 +12,9 @@ export class ToolEngine {
     colorIndex: number;
     brushSize?: number;
     mirrorX?: boolean;
+    isBlocked?: (x: number, y: number) => boolean;
   }) {
-    const { frame, from, to, colorIndex, brushSize = 1, mirrorX = false } = params;
+    const { frame, from, to, colorIndex, brushSize = 1, mirrorX = false, isBlocked } = params;
     const next = new Uint16Array(frame.pixels);
 
     const plot = (x: number, y: number) => {
@@ -21,9 +22,11 @@ export class ToolEngine {
         for (let ox = 0; ox < brushSize; ox += 1) {
           const px = clamp(x + ox, 0, frame.width - 1);
           const py = clamp(y + oy, 0, frame.height - 1);
+          if (isBlocked?.(px, py)) continue;
           next[indexOf(frame.width, px, py)] = colorIndex;
           if (mirrorX) {
             const mx = frame.width - 1 - px;
+            if (isBlocked?.(mx, py)) continue;
             next[indexOf(frame.width, mx, py)] = colorIndex;
           }
         }

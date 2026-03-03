@@ -39,6 +39,7 @@ interface PixelCanvasProps {
   showGrid: boolean;
   onionSkinning: boolean;
   onPixelChange: (x: number, y: number, color: string) => string[] | null;
+  onLineStroke?: (from: { x: number; y: number }, to: { x: number; y: number }, color: string, brushSize: number) => string[] | null;
   onFillArea?: (startX: number, startY: number, color: string) => string[] | null;
   onStrokeComplete?: (pixels: string[] | null, action: 'draw' | 'erase' | 'fill') => void;
   onColorPick: (color: string) => void;
@@ -64,6 +65,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   showGrid,
   onionSkinning,
   onPixelChange,
+  onLineStroke,
   onFillArea,
   onStrokeComplete,
   onColorPick,
@@ -363,8 +365,13 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     lastPosRef.current = { x, y };
     const useSize = tool === 'eraser' ? eraserSize : brushSize;
     const color = tool === 'eraser' ? 'transparent' : selectedColor;
-    drawBrush(x, y, color, useSize);
-}, [tool, selection.active, getSelectionRect, liftSelection, stampFloat, resetSelection, drawSelectionOverlay, frames, currentFrameIndex, gridSize, onColorPick, selectedColor, onFillArea, commitStroke, brushSize, eraserSize, drawBrush, getCanvasCoords]);
+    if (onLineStroke) {
+      const pixels = onLineStroke({ x, y }, { x, y }, color, useSize);
+      if (pixels) lastPixelsRef.current = pixels;
+    } else {
+      drawBrush(x, y, color, useSize);
+    }
+}, [tool, selection.active, getSelectionRect, liftSelection, stampFloat, resetSelection, drawSelectionOverlay, frames, currentFrameIndex, gridSize, onColorPick, selectedColor, onLineStroke, onFillArea, commitStroke, brushSize, eraserSize, drawBrush, getCanvasCoords]);
 
   const moveInteraction = useCallback((clientX: number, clientY: number) => {
     const { x, y } = getCanvasCoords(clientX, clientY);
@@ -389,10 +396,15 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     const useSize = tool === 'eraser' ? eraserSize : brushSize;
     const color = tool === 'eraser' ? 'transparent' : selectedColor;
 
-    drawInterpolatedStroke(lastPosRef.current, { x, y }, color, useSize);
+    if (onLineStroke) {
+      const pixels = onLineStroke(lastPosRef.current, { x, y }, color, useSize);
+      if (pixels) lastPixelsRef.current = pixels;
+    } else {
+      drawInterpolatedStroke(lastPosRef.current, { x, y }, color, useSize);
+    }
     setLastPos({ x, y });
     lastPosRef.current = { x, y };
-  }, [tool, selection.moving, selection.floatData, selection.dragging, drawSelectionOverlay, eraserSize, brushSize, selectedColor, drawInterpolatedStroke, getCanvasCoords]);
+  }, [tool, selection.moving, selection.floatData, selection.dragging, drawSelectionOverlay, eraserSize, brushSize, selectedColor, onLineStroke, drawInterpolatedStroke, getCanvasCoords]);
 
   const endInteraction = useCallback(() => {
     if (tool === 'select') {
