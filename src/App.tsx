@@ -1047,7 +1047,7 @@ export default function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const fetchWithTimeout = async (url: string, timeout = 3000) => {
+      const fetchWithTimeout = async (url: string, timeout = 0) => {
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), timeout);
         try {
