@@ -288,10 +288,13 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
 );
 
 export default function App() {
+  type ExportFormat = 'png' | 'gif' | 'sprite-sheet' | 'jpeg' | 'print' | 'palette';
+
   // Navigation & UI State
   const [activeTab, setActiveTab] = useState<'create' | 'studio' | 'closet' | 'challenges' | 'profile'>('create');
   const [onboarding, setOnboarding] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   
   // Editor State
   const [gridSize, setGridSize] = useState(32);
@@ -1724,28 +1727,161 @@ export default function App() {
     setPalette(palette.filter(c => c !== color));
   };
 
-  const downloadImage = () => {
+  const downloadDataUrl = (filename: string, dataUrl: string) => {
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = dataUrl;
+    link.click();
+  };
+
+  const downloadTextFile = (filename: string, content: string, mimeType: string = 'text/plain') => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getFrameDisplayColor = (frame: Frame, index: number) => {
+    const color = frame.pixels[index];
+    if (color && color !== 'transparent') return color;
+    const baseColor = frame.basePixels?.[index];
+    return baseColor && baseColor !== 'transparent' ? baseColor : 'transparent';
+  };
+
+  const renderFrameCanvas = (frame: Frame, scale: number, backgroundColor?: string) => {
     const canvas = document.createElement('canvas');
-    const scale = 20; // Upscale for crisp pixel art
     canvas.width = gridSize * scale;
     canvas.height = gridSize * scale;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) return null;
     ctx.imageSmoothingEnabled = false;
-    
-    frames[currentFrameIndex].pixels.forEach((color, i) => {
+
+    if (backgroundColor) {
+      ctx.fillStyle = backgroundColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    for (let i = 0; i < frame.pixels.length; i++) {
+      const displayColor = getFrameDisplayColor(frame, i);
+      if (displayColor === 'transparent') continue;
       const x = (i % gridSize) * scale;
       const y = Math.floor(i / gridSize) * scale;
-      if (color !== 'transparent') {
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y, scale, scale);
+      ctx.fillStyle = displayColor;
+      ctx.fillRect(x, y, scale, scale);
+    }
+
+    return canvas;
+  };
+
+  const exportAs = (format: ExportFormat) => {
+    const activeFrame = frames[currentFrameIndex];
+    if (!activeFrame) return;
+
+    const safeName = projectName.trim().replace(/\s+/g, '-').toLowerCase() || 'pixel-sprite';
+
+    if (format === 'png') {
+      const canvas = renderFrameCanvas(activeFrame, 20);
+      if (!canvas) return;
+      downloadDataUrl(`${safeName}.png`, canvas.toDataURL('image/png'));
+      setShowExportMenu(false);
+      return;
+    }
+
+    if (format === 'jpeg') {
+      const canvas = renderFrameCanvas(activeFrame, 20, '#ffffff');
+      if (!canvas) return;
+      downloadDataUrl(`${safeName}.jpg`, canvas.toDataURL('image/jpeg', 0.92));
+      setShowExportMenu(false);
+      return;
+    }
+
+    if (format === 'sprite-sheet' || format === 'gif') {
+      const frameScale = 12;
+      const columns = Math.min(8, Math.max(1, Math.ceil(Math.sqrt(frames.length))));
+      const rows = Math.max(1, Math.ceil(frames.length / columns));
+      const padding = 2;
+      const cellSize = gridSize * frameScale;
+      const canvas = document.createElement('canvas');
+      canvas.width = columns * cellSize + (columns + 1) * padding;
+      canvas.height = rows * cellSize + (rows + 1) * padding;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillStyle = '#00000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      frames.forEach((frame, index) => {
+        const col = index % columns;
+        const row = Math.floor(index / columns);
+        const offsetX = padding + col * (cellSize + padding);
+        const offsetY = padding + row * (cellSize + padding);
+
+        for (let pixelIndex = 0; pixelIndex < frame.pixels.length; pixelIndex++) {
+          const displayColor = getFrameDisplayColor(frame, pixelIndex);
+          if (displayColor === 'transparent') continue;
+          const x = offsetX + (pixelIndex % gridSize) * frameScale;
+          const y = offsetY + Math.floor(pixelIndex / gridSize) * frameScale;
+          ctx.fillStyle = displayColor;
+          ctx.fillRect(x, y, frameScale, frameScale);
+        }
+      });
+
+      if (format === 'gif') {
+        showFrameNotice('Animated GIF exports as sprite sheet PNG for now');
+        downloadDataUrl(`${safeName}-animated.png`, canvas.toDataURL('image/png'));
+      } else {
+        downloadDataUrl(`${safeName}-sheet.png`, canvas.toDataURL('image/png'));
       }
-    });
-    
-    const link = document.createElement('a');
-    link.download = `${projectName}.png`;
-    link.href = canvas.toDataURL();
-    link.click();
+      setShowExportMenu(false);
+      return;
+    }
+
+    if (format === 'print') {
+      const printCanvas = document.createElement('canvas');
+      printCanvas.width = 2480;
+      printCanvas.height = 3508;
+      const printCtx = printCanvas.getContext('2d');
+      if (!printCtx) return;
+
+      printCtx.fillStyle = '#ffffff';
+      printCtx.fillRect(0, 0, printCanvas.width, printCanvas.height);
+
+      const targetSize = 1700;
+      const scale = Math.max(1, Math.floor(targetSize / gridSize));
+      const frameCanvas = renderFrameCanvas(activeFrame, scale, '#ffffff');
+      if (!frameCanvas) return;
+
+      const x = Math.floor((printCanvas.width - frameCanvas.width) / 2);
+      const y = Math.floor((printCanvas.height - frameCanvas.height) / 2);
+      printCtx.drawImage(frameCanvas, x, y);
+
+      printCtx.fillStyle = '#222222';
+      printCtx.font = 'bold 54px system-ui';
+      printCtx.textAlign = 'center';
+      printCtx.fillText(projectName, printCanvas.width / 2, 220);
+
+      downloadDataUrl(`${safeName}-print.png`, printCanvas.toDataURL('image/png'));
+      setShowExportMenu(false);
+      return;
+    }
+
+    if (format === 'palette') {
+      const paletteData = {
+        project: projectName,
+        colors: palette,
+        exportedAt: new Date().toISOString(),
+      };
+      downloadTextFile(`${safeName}-palette.json`, JSON.stringify(paletteData, null, 2), 'application/json');
+      setShowExportMenu(false);
+      return;
+    }
+  };
+
+  const downloadImage = () => {
+    exportAs('png');
   };
 
   const saveProject = async () => {
@@ -2008,7 +2144,7 @@ export default function App() {
           </Button>
           <Button 
             variant="ghost" 
-            onClick={downloadImage} 
+            onClick={() => setShowExportMenu(true)} 
             className="px-3 py-2 text-xs flex items-center gap-2 border border-zinc-800"
           >
             <Download className="w-3 h-3" /> Export
@@ -2023,6 +2159,21 @@ export default function App() {
           <Button onClick={saveProject} className="px-4 py-2 text-xs">Save</Button>
         </div>
       </header>
+
+      <div className="md:hidden border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md px-3 py-2 flex items-center gap-2">
+        <button
+          onClick={() => setShowExportMenu(true)}
+          className="flex-1 py-2 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 text-[11px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
+        >
+          <Download className="w-3 h-3" /> Export As
+        </button>
+        <button
+          onClick={saveProject}
+          className="flex-1 py-2 rounded-xl bg-purple-600 text-white text-[11px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
+        >
+          <Save className="w-3 h-3" /> Save
+        </button>
+      </div>
 
       {/* Canvas Area */}
       <div className="flex-1 flex items-center justify-center p-8 bg-[#0a0a0a] checkerboard overflow-hidden relative">
@@ -2530,6 +2681,40 @@ export default function App() {
                     className="w-full h-2 accent-purple-500 bg-zinc-800 rounded-full appearance-none cursor-pointer"
                   />
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showExportMenu && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[220] flex items-end md:items-center justify-center p-0 md:p-6"
+          >
+            <motion.div
+              initial={{ y: 24, opacity: 0.95 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0.95 }}
+              className="w-full md:max-w-md bg-zinc-950 border border-zinc-800 md:rounded-3xl rounded-t-3xl p-5"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-white uppercase tracking-widest">Export As</h3>
+                <button onClick={() => setShowExportMenu(false)} className="text-zinc-500 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                <button onClick={() => exportAs('png')} className="px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-800 text-left text-zinc-200 hover:border-purple-500"><span className="font-bold">PNG</span> <span className="text-zinc-500">(Recommended)</span></button>
+                <button onClick={() => exportAs('gif')} className="px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-800 text-left text-zinc-200 hover:border-purple-500"><span className="font-bold">Animated GIF</span></button>
+                <button onClick={() => exportAs('sprite-sheet')} className="px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-800 text-left text-zinc-200 hover:border-purple-500"><span className="font-bold">Sprite Sheet</span></button>
+                <button onClick={() => exportAs('jpeg')} className="px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-800 text-left text-zinc-200 hover:border-purple-500"><span className="font-bold">JPEG</span> <span className="text-zinc-500">(Sharing)</span></button>
+                <button onClick={() => exportAs('print')} className="px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-800 text-left text-zinc-200 hover:border-purple-500"><span className="font-bold">Print File</span></button>
+                <button onClick={() => exportAs('palette')} className="px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-800 text-left text-zinc-200 hover:border-purple-500"><span className="font-bold">Palette</span></button>
               </div>
             </motion.div>
           </motion.div>
