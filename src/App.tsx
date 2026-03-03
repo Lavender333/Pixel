@@ -412,6 +412,7 @@ export default function App() {
   const hasTrackedCanvasStartedRef = useRef(false);
   const historyIndexRef = useRef(-1);
   const framesRef = useRef<Frame[]>(frames);
+  const corePaletteAdapterCacheRef = useRef(new Map<string, { paletteEntries: Array<{ hex: string }>; colorToIndex: Map<string, number> }>());
   const strokeDraftRef = useRef<string[] | null>(null);
   const strokeFrameIndexRef = useRef<number | null>(null);
   const paintRafRef = useRef<number | null>(null);
@@ -1108,7 +1109,8 @@ export default function App() {
     if (!frame) return null;
 
     const currentPixels = [...frame.pixels];
-    const { paletteEntries, registerColor } = buildCorePaletteIndex([currentPixels, [fillColor]]);
+    const cacheKey = `fill:${frame.id}:${gridSize}`;
+    const { paletteEntries, registerColor } = buildCorePaletteIndex([[fillColor]], cacheKey);
     const durationMs = Math.round((1000 / Math.max(1, fps)) * (frame.duration ?? 1));
     const coreFrame = colorsToCoreFrame(frame.id, currentPixels, durationMs, registerColor);
     const filled = ToolEngine.floodFill(
@@ -1128,14 +1130,15 @@ export default function App() {
     });
 
     return nextPixels;
-  }, [currentFrameIndex, fps, frames, isLockedPixel]);
+  }, [currentFrameIndex, fps, frames, gridSize, isLockedPixel]);
 
   const handleLineStroke = useCallback((from: { x: number; y: number }, to: { x: number; y: number }, strokeColor: string, strokeBrushSize: number) => {
     const frame = frames[currentFrameIndex];
     if (!frame) return null;
 
     const currentPixels = [...frame.pixels];
-    const { paletteEntries, registerColor } = buildCorePaletteIndex([currentPixels, [strokeColor]]);
+    const cacheKey = `stroke:${frame.id}:${gridSize}`;
+    const { paletteEntries, registerColor } = buildCorePaletteIndex([[strokeColor]], cacheKey);
     const durationMs = Math.round((1000 / Math.max(1, fps)) * (frame.duration ?? 1));
     const coreFrame = colorsToCoreFrame(frame.id, currentPixels, durationMs, registerColor);
     const stroked = ToolEngine.applyLineStroke({
@@ -1158,7 +1161,7 @@ export default function App() {
     });
 
     return nextPixels;
-  }, [currentFrameIndex, fps, frames, isLockedPixel, mirrorMode]);
+  }, [currentFrameIndex, fps, frames, gridSize, isLockedPixel, mirrorMode]);
 
   const handleStrokeComplete = (pixels: string[] | null, action: 'draw' | 'erase' | 'fill') => {
     if (strokeDraftRef.current && strokeFrameIndexRef.current === currentFrameIndex) {
@@ -2035,9 +2038,30 @@ export default function App() {
     setPalette(palette.filter(c => c !== color));
   };
 
-  const buildCorePaletteIndex = (colorSets: string[][]) => {
-    const paletteEntries: Array<{ hex: string }> = [{ hex: '#00000000' }];
-    const colorToIndex = new Map<string, number>();
+  const buildCorePaletteIndex = (colorSets: string[][], cacheKey?: string) => {
+    let paletteEntries: Array<{ hex: string }>;
+    let colorToIndex: Map<string, number>;
+
+    if (cacheKey) {
+      const cached = corePaletteAdapterCacheRef.current.get(cacheKey);
+      if (cached) {
+        paletteEntries = cached.paletteEntries;
+        colorToIndex = cached.colorToIndex;
+      } else {
+        paletteEntries = [{ hex: '#00000000' }];
+        colorToIndex = new Map<string, number>();
+        corePaletteAdapterCacheRef.current.set(cacheKey, { paletteEntries, colorToIndex });
+        if (corePaletteAdapterCacheRef.current.size > 24) {
+          const firstKey = corePaletteAdapterCacheRef.current.keys().next().value;
+          if (firstKey) {
+            corePaletteAdapterCacheRef.current.delete(firstKey);
+          }
+        }
+      }
+    } else {
+      paletteEntries = [{ hex: '#00000000' }];
+      colorToIndex = new Map<string, number>();
+    }
 
     const registerColor = (color: string): number => {
       if (color === 'transparent') return 0;
