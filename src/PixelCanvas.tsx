@@ -685,7 +685,6 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        onPointerLeave={handlePointerUp}
         onWheel={handleWheelZoom}
       />
       <canvas
