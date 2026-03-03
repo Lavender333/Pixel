@@ -41,7 +41,9 @@ import {
   Copy,
   ArrowLeft,
   ArrowRight,
-  Clock
+  Clock,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
@@ -120,7 +122,7 @@ export default function App() {
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [selectedColor, setSelectedColor] = useState('#ffffff');
   const [palette, setPalette] = useState<string[]>(STARTER_PALETTE);
-  const [tool, setTool] = useState<'pencil' | 'eraser' | 'fill' | 'picker'>('pencil');
+  const [tool, setTool] = useState<'pencil' | 'eraser' | 'fill' | 'picker' | 'select'>('pencil');
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [projectName, setProjectName] = useState('New Identity');
   const [history, setHistory] = useState<string[][]>([]);
@@ -131,12 +133,131 @@ export default function App() {
   const [fps, setFps] = useState(8);
   const [showPreview, setShowPreview] = useState(true); // Default to true for the mini-preview
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showNudgePanel, setShowNudgePanel] = useState(false);
+  const [selection, setSelection] = useState<{ active: boolean; x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
   const [onionSkinning, setOnionSkinning] = useState(false);
   const [showShades, setShowShades] = useState(true);
   const [activePaletteTab, setActivePaletteTab] = useState<'current' | 'saved' | 'trending'>('current');
   const [savedPalettes, setSavedPalettes] = useState<{name: string, colors: string[]}[]>(TRENDING_PALETTES);
   const [paletteName, setPaletteName] = useState('My New Palette');
+
+  // Sound System
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  const initAudioContext = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return audioContextRef.current;
+  };
+
+  const playSound = (frequency: number, duration: number, type: OscillatorType = 'sine', volume: number = 0.1) => {
+    if (!soundEnabled) return;
+    
+    try {
+      const audioContext = initAudioContext();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+      oscillator.type = type;
+      
+      gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + duration);
+    } catch (error) {
+      console.warn('Audio playback failed:', error);
+    }
+  };
+
+  // Gamification System
+  const [xp, setXp] = useState(0);
+  const [level, setLevel] = useState(1);
+  const [streak, setStreak] = useState(0);
+  const [lastActivityDate, setLastActivityDate] = useState<string | null>(null);
+  const [achievements, setAchievements] = useState<string[]>([]);
+  const [showAchievementModal, setShowAchievementModal] = useState(false);
+  const [currentAchievement, setCurrentAchievement] = useState<string | null>(null);
+
+  const xpToLevel = (xp: number) => Math.floor(xp / 100) + 1;
+  const xpForNextLevel = (level: number) => level * 100;
+
+  const addXp = (amount: number, reason: string) => {
+    const newXp = xp + amount;
+    const newLevel = xpToLevel(newXp);
+    
+    setXp(newXp);
+    if (newLevel > level) {
+      setLevel(newLevel);
+      unlockAchievement(`Reached Level ${newLevel}!`);
+    }
+
+    // Check for achievement unlocks
+    checkAchievements(reason, amount);
+  };
+
+  const checkAchievements = (action: string, amount: number) => {
+    const newAchievements: string[] = [];
+
+    if (action === 'draw' && amount >= 10) {
+      if (!achievements.includes('First Strokes')) {
+        newAchievements.push('First Strokes');
+      }
+    }
+    if (action === 'save' && !achievements.includes('Pixel Saver')) {
+      newAchievements.push('Pixel Saver');
+    }
+    if (action === 'animation' && !achievements.includes('Animator')) {
+      newAchievements.push('Animator');
+    }
+    if (frames.length >= 5 && !achievements.includes('Frame Master')) {
+      newAchievements.push('Frame Master');
+    }
+    if (streak >= 7 && !achievements.includes('Week Warrior')) {
+      newAchievements.push('Week Warrior');
+    }
+
+    newAchievements.forEach(achievement => {
+      unlockAchievement(achievement);
+    });
+  };
+
+  const unlockAchievement = (achievement: string) => {
+    if (!achievements.includes(achievement)) {
+      setAchievements(prev => [...prev, achievement]);
+      setCurrentAchievement(achievement);
+      setShowAchievementModal(true);
+      playAchievementSound();
+      addXp(50, 'achievement');
+      
+      setTimeout(() => {
+        setShowAchievementModal(false);
+        setCurrentAchievement(null);
+      }, 3000);
+    }
+  };
+
+  const updateStreak = () => {
+    const today = new Date().toDateString();
+    if (lastActivityDate !== today) {
+      if (lastActivityDate === new Date(Date.now() - 86400000).toDateString()) {
+        setStreak(prev => prev + 1);
+        if (streak + 1 >= 7) {
+          unlockAchievement('Week Warrior');
+        }
+      } else {
+        setStreak(1);
+      }
+      setLastActivityDate(today);
+    }
+  };
 
   // Data State
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -278,12 +399,50 @@ export default function App() {
           e.preventDefault();
           redo();
         }
+      } else {
+        // Selection controls
+        if (selection?.active) {
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            nudgeSelection(0, -1);
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            nudgeSelection(0, 1);
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            nudgeSelection(-1, 0);
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            nudgeSelection(1, 0);
+          }
+        }
+        
+        // Tool shortcuts
+        if (e.key === 's' && !e.ctrlKey) {
+          e.preventDefault();
+          setTool('select');
+        } else if (e.key === 'b') {
+          e.preventDefault();
+          setTool('pencil');
+        } else if (e.key === 'e') {
+          e.preventDefault();
+          setTool('eraser');
+        } else if (e.key === 'f') {
+          e.preventDefault();
+          setTool('fill');
+        } else if (e.key === 'i') {
+          e.preventDefault();
+          setTool('picker');
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          clearSelection();
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, selection?.active, nudgeSelection, clearSelection]);
 
   const handlePixelAction = (index: number, isInitialClick = false) => {
     const currentFrame = frames[currentFrameIndex];
@@ -308,6 +467,7 @@ export default function App() {
       if (newPixels) {
         updateFrame(newPixels);
         saveToHistory(newPixels);
+        playDrawSound();
       }
       return;
     }
@@ -327,7 +487,17 @@ export default function App() {
     }
 
     updateFrame(newPixels);
-    if (isInitialClick) saveToHistory(newPixels);
+    if (isInitialClick) {
+      saveToHistory(newPixels);
+      updateStreak();
+      if (tool === 'pencil') {
+        playDrawSound();
+        addXp(1, 'draw');
+      } else if (tool === 'eraser') {
+        playEraseSound();
+        addXp(1, 'erase');
+      }
+    }
   };
 
   const updateFrame = (pixels: string[]) => {
@@ -356,10 +526,29 @@ export default function App() {
     return newPixels;
   };
 
-  const clearCanvas = () => {
-    const newPixels = Array(gridSize * gridSize).fill('transparent');
-    updateFrame(newPixels);
-    saveToHistory(newPixels);
+  const nudgeSelection = (dx: number, dy: number) => {
+    if (!selection) return;
+    playNudgeSound();
+    // This will be handled by the PixelCanvas component
+    setSelection(prev => {
+      if (!prev) return null;
+      const w = Math.abs(prev.x1 - prev.x0) + 1;
+      const h = Math.abs(prev.y1 - prev.y0) + 1;
+      const newX0 = Math.max(0, Math.min(gridSize - w, prev.x0 + dx));
+      const newY0 = Math.max(0, Math.min(gridSize - h, prev.y0 + dy));
+      return {
+        ...prev,
+        x0: newX0,
+        y0: newY0,
+        x1: newX0 + w - 1,
+        y1: newY0 + h - 1,
+      };
+    });
+  };
+
+  const clearSelection = () => {
+    setSelection(null);
+    setShowNudgePanel(false);
   };
 
   const remixColors = () => {
@@ -386,7 +575,7 @@ export default function App() {
     });
   };
 
-  const applyAnimationPreset = (preset: 'bounce' | 'blink' | 'float' | 'pulse' | 'shake') => {
+  const applyAnimationPreset = (preset: 'bounce' | 'blink' | 'float' | 'pulse' | 'shake' | 'walk_cat' | 'spin_star' | 'bounce_ball' | 'pixel_fire' | 'neon_heart' | 'walk_cycle' | 'y2k_glitter') => {
     const currentFrame = frames[currentFrameIndex];
     const basePixels = [...currentFrame.pixels];
     const baseBasePixels = currentFrame.basePixels ? [...currentFrame.basePixels] : undefined;
@@ -491,9 +680,423 @@ export default function App() {
       }
     }
 
+    // Advanced Animation Templates from pixel-creator-2.html
+    if (preset === 'walk_cat') {
+      // Walking cat animation - 4 frames
+      for (let f = 0; f < 4; f++) {
+        const o = Math.floor((gridSize - 22) / 2);
+        const bob = [0, 1, 0, -1][f];
+        const tailSwing = [-2, -1, 2, 1][f];
+        const pixels = Array(gridSize * gridSize).fill('transparent');
+
+        // Draw cat frame by frame
+        const drawPixel = (x: number, y: number, color: string) => {
+          if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+            pixels[y * gridSize + x] = color;
+          }
+        };
+
+        // Ears
+        [[4, 0, '#C06020'], [5, 0, '#FF9A50'], [6, 0, '#C06020'], [12, 0, '#C06020'], [13, 0, '#FF9A50'], [14, 0, '#C06020']].forEach(([x, y, c]) => {
+          drawPixel(o + x, o + y + bob, c);
+        });
+        [[5, 1, '#FF9A50'], [13, 1, '#FF9A50']].forEach(([x, y, c]) => {
+          drawPixel(o + x, o + y + bob, c);
+        });
+
+        // Head
+        for (let y = 1; y <= 7; y++) {
+          for (let x = 4; x <= 14; x++) {
+            const color = (x <= 5 || x >= 13) ? '#C06020' : (y <= 2) ? '#FFCC80' : '#FF9A50';
+            drawPixel(o + x, o + y + bob, color);
+          }
+        }
+
+        // Face
+        [[6, 3, '#111'], [6, 4, '#1a88FF'], [7, 3, '#99BBFF'], [11, 3, '#111'], [11, 4, '#1a88FF'], [12, 3, '#99BBFF']].forEach(([x, y, c]) => {
+          drawPixel(o + x, o + y + bob, c);
+        });
+        [[9, 6, '#FF6090'], [9, 7, '#FF4070']].forEach(([x, y, c]) => {
+          drawPixel(o + x, o + y + bob, c);
+        });
+
+        // Body
+        for (let y = 8; y <= 17; y++) {
+          for (let x = 4; x <= 14; x++) {
+            const color = (x <= 5 || x >= 13) ? '#C06020' : (y >= 15) ? '#C06020' : '#FF9A50';
+            drawPixel(o + x, o + y, color);
+          }
+        }
+
+        // Chest stripe
+        drawPixel(o + 6, o + 9, '#FFAA60');
+        drawPixel(o + 6, o + 10, '#FFAA60');
+        drawPixel(o + 7, o + 10, '#FFAA60');
+
+        // Legs
+        const poseA = [[4, 18, 4], [5, 18, 3], [12, 18, 3], [13, 18, 4]];
+        const poseB = [[4, 18, 3], [5, 18, 4], [12, 18, 4], [13, 18, 3]];
+        const legs = f % 2 === 0 ? poseA : poseB;
+        legs.forEach(([x, fy, by]) => {
+          drawPixel(o + x, o + fy, '#C06020');
+          drawPixel(o + x, o + fy + 1, '#C06020');
+          drawPixel(o + x, o + fy + 2, '#FF9A50');
+        });
+
+        // Tail
+        const ty = [[-1, 0], [-2, 0], [-2, -1], [-1, -1]][f];
+        [[14 + ty[0], 13, '#FF9A50'], [15 + ty[0], 12, '#FF9A50'], [16, 11 + ty[1], '#FFAA60'], [17, 10 + ty[1], '#C06020']].forEach(([x, y, c]) => {
+          if (x < gridSize) drawPixel(o + x, o + y, c);
+        });
+
+        newFrames.push(createFrame(pixels));
+      }
+    }
+
+    if (preset === 'spin_star') {
+      // Spinning star animation - 8 frames
+      for (let f = 0; f < 8; f++) {
+        const cx = Math.floor(gridSize / 2);
+        const cy = Math.floor(gridSize / 2);
+        const R = Math.floor(gridSize * 0.4);
+        const r = Math.floor(gridSize * 0.16);
+        const rot = f * Math.PI / 4;
+        const pixels = Array(gridSize * gridSize).fill('transparent');
+
+        const drawPixel = (x: number, y: number, color: string) => {
+          if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+            pixels[y * gridSize + x] = color;
+          }
+        };
+
+        // Draw star pixel by pixel
+        for (let y = 0; y < gridSize; y++) {
+          for (let x = 0; x < gridSize; x++) {
+            const dx = x - cx;
+            const dy = y - cy;
+            const angle = Math.atan2(dy, dx) - rot;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > R + 1) continue;
+
+            const a = ((angle + Math.PI * 2) % (Math.PI * 2 / 5)) - (Math.PI / 5);
+            const starR = r + (R - r) * Math.cos(Math.PI / 5) / Math.cos(a);
+            if (dist <= starR) {
+              const shade = dist < r * 0.6 ? '#FFFAAA' : dist < R * 0.4 ? '#FFE840' : dist < R * 0.7 ? '#FFD166' : '#EEB840';
+              drawPixel(x, y, shade);
+            }
+          }
+        }
+
+        // Center glow
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            if (dx * dx + dy * dy <= 5) {
+              drawPixel(cx + dx, cy + dy, 'rgba(255,255,200,0.8)');
+            }
+          }
+        }
+
+        // Trailing twinkles
+        for (let i = 0; i < 5; i++) {
+          const a = rot + i * (Math.PI * 2 / 5) + Math.PI / 10;
+          const tx = Math.round(cx + R * 1.2 * Math.cos(a));
+          const ty = Math.round(cy + R * 1.2 * Math.sin(a));
+          if (tx >= 0 && tx < gridSize && ty >= 0 && ty < gridSize) {
+            drawPixel(tx, ty, '#FFF');
+          }
+        }
+
+        newFrames.push(createFrame(pixels));
+      }
+    }
+
+    if (preset === 'bounce_ball') {
+      // Bouncing ball animation - 6 frames
+      const phases = [0, 1, 2, 3, 2, 1];
+      for (let fi = 0; fi < 6; fi++) {
+        const ph = phases[fi];
+        const y0 = Math.floor(gridSize * 0.1);
+        const y3 = Math.floor(gridSize * 0.68);
+        const cy = Math.round(y0 + (y3 - y0) * (ph / 3));
+        const squashX = ph === 3 ? 1.35 : ph === 0 ? 0.88 : 1;
+        const squashY = ph === 3 ? 0.70 : ph === 0 ? 1.18 : 1;
+        const rBase = Math.floor(gridSize * 0.18);
+        const rw = Math.round(rBase * squashX);
+        const rh = Math.round(rBase * squashY);
+        const pixels = Array(gridSize * gridSize).fill('transparent');
+
+        const drawPixel = (x: number, y: number, color: string) => {
+          if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+            pixels[y * gridSize + x] = color;
+          }
+        };
+
+        // Ball body
+        for (let dy = -rh; dy <= rh; dy++) {
+          for (let dx = -rw; dx <= rw; dx++) {
+            if ((dx / rw) ** 2 + (dy / rh) ** 2 > 1) continue;
+            const d = Math.sqrt((dx / rw) ** 2 + (dy / rh) ** 2);
+            const color = d < 0.3 ? '#FF9090' : d < 0.65 ? '#FF6B6B' : '#CC3333';
+            drawPixel(Math.floor(gridSize / 2) + dx, cy + dy, color);
+          }
+        }
+
+        // Shine
+        const shx = Math.floor(gridSize / 2) - Math.floor(rw * 0.3);
+        const shy = cy - Math.floor(rh * 0.35);
+        for (let dy = -2; dy <= 1; dy++) {
+          for (let dx = -3; dx <= 2; dx++) {
+            if (dx * dx / 9 + dy * dy / 4 <= 1) {
+              drawPixel(shx + dx, shy + dy, 'rgba(255,255,255,0.7)');
+            }
+          }
+        }
+
+        // Seam lines
+        for (let dx = -rw; dx <= rw; dx++) {
+          const seamy = cy + Math.round(rh * 0.2 * Math.sin(dx * Math.PI / rw));
+          if (seamy >= cy - rh && seamy <= cy + rh) {
+            drawPixel(Math.floor(gridSize / 2) + dx, seamy, 'rgba(150,30,30,0.4)');
+          }
+        }
+
+        // Motion blur
+        if (ph === 1 || ph === 2) {
+          for (let i = 1; i <= 3; i++) {
+            drawPixel(Math.floor(gridSize / 2) - 2, cy - rh - i, 'rgba(255,107,107,0.15)');
+            drawPixel(Math.floor(gridSize / 2) - 1, cy - rh - i, 'rgba(255,107,107,0.15)');
+            drawPixel(Math.floor(gridSize / 2), cy - rh - i, 'rgba(255,107,107,0.15)');
+            drawPixel(Math.floor(gridSize / 2) + 1, cy - rh - i, 'rgba(255,107,107,0.15)');
+            drawPixel(Math.floor(gridSize / 2) + 2, cy - rh - i, 'rgba(255,107,107,0.15)');
+          }
+        }
+
+        newFrames.push(createFrame(pixels));
+      }
+    }
+
+    if (preset === 'pixel_fire') {
+      // Pixel fire animation - 4 frames
+      for (let f = 0; f < 4; f++) {
+        const pixels = Array(gridSize * gridSize).fill('transparent');
+        const cx = Math.floor(gridSize / 2);
+        const by = Math.floor(gridSize * 0.75);
+
+        const drawPixel = (x: number, y: number, color: string) => {
+          if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+            pixels[y * gridSize + x] = color;
+          }
+        };
+
+        // Base flame
+        for (let y = by - 8; y <= by; y++) {
+          for (let x = cx - 3; x <= cx + 3; x++) {
+            const dx = x - cx;
+            const dy = y - by;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 4) continue;
+
+            const flicker = Math.sin(f * Math.PI / 2 + dx * 0.5 + dy * 0.3) * 0.3;
+            const height = 1 - (dy + 8) / 8 + flicker;
+            if (height > 0) {
+              const color = height > 0.8 ? '#FFF' : height > 0.6 ? '#FFA500' : height > 0.4 ? '#FF6600' : '#FF3300';
+              drawPixel(x, y, color);
+            }
+          }
+        }
+
+        // Sparks
+        for (let i = 0; i < 8; i++) {
+          const sx = cx + Math.sin(f * Math.PI / 2 + i) * 2;
+          const sy = by - 6 + Math.cos(f * Math.PI / 2 + i) * 1.5;
+          const sparkX = Math.round(sx);
+          const sparkY = Math.round(sy);
+          if (sparkX >= 0 && sparkX < gridSize && sparkY >= 0 && sparkY < gridSize) {
+            drawPixel(sparkX, sparkY, '#FFFF00');
+          }
+        }
+
+        // Embers
+        for (let i = 0; i < 5; i++) {
+          const ex = cx + (i - 2) * 1.5;
+          const ey = by - 2 + Math.sin(f + i) * 0.5;
+          const emberX = Math.round(ex);
+          const emberY = Math.round(ey);
+          if (emberX >= 0 && emberX < gridSize && emberY >= 0 && emberY < gridSize) {
+            drawPixel(emberX, emberY, '#FFAA00');
+          }
+        }
+
+        newFrames.push(createFrame(pixels));
+      }
+    }
+
+    if (preset === 'neon_heart') {
+      // Neon heart animation - 4 frames
+      for (let f = 0; f < 4; f++) {
+        const pixels = Array(gridSize * gridSize).fill('transparent');
+        const cx = Math.floor(gridSize / 2);
+        const cy = Math.floor(gridSize / 2);
+
+        const drawPixel = (x: number, y: number, color: string) => {
+          if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+            pixels[y * gridSize + x] = color;
+          }
+        };
+
+        // Heart shape
+        for (let y = -8; y <= 8; y++) {
+          for (let x = -8; x <= 8; x++) {
+            const inHeart = Math.abs(x) + Math.abs(y) <= 6 || (x * x + y * y <= 25 && Math.abs(x) <= 5);
+            if (inHeart) {
+              const pulse = Math.sin(f * Math.PI / 2) * 0.3 + 0.7;
+              const color = pulse > 0.9 ? '#FF00FF' : pulse > 0.7 ? '#FF66FF' : '#CC00CC';
+              drawPixel(cx + x, cy + y, color);
+            }
+          }
+        }
+
+        // Glow effect
+        for (let y = -10; y <= 10; y++) {
+          for (let x = -10; x <= 10; x++) {
+            const dist = Math.sqrt(x * x + y * y);
+            if (dist > 6 && dist <= 9) {
+              const alpha = (9 - dist) / 3;
+              drawPixel(cx + x, cy + y, `rgba(255,0,255,${alpha * 0.3})`);
+            }
+          }
+        }
+
+        // Pulsing outline
+        const outline = [
+          [-6, -2], [-5, -3], [-4, -4], [-3, -5], [-2, -6], [2, -6], [3, -5], [4, -4], [5, -3], [6, -2],
+          [6, 0], [5, 2], [4, 4], [3, 5], [2, 6], [-2, 6], [-3, 5], [-4, 4], [-5, 2], [-6, 0]
+        ];
+        outline.forEach(([x, y]) => {
+          const pulse = Math.sin(f * Math.PI / 2 + x * 0.1 + y * 0.1) * 0.5 + 0.5;
+          const color = pulse > 0.7 ? '#FFFFFF' : '#FFAAFF';
+          drawPixel(cx + x, cy + y, color);
+        });
+
+        newFrames.push(createFrame(pixels));
+      }
+    }
+
+    if (preset === 'walk_cycle') {
+      // Walk cycle animation - 4 frames
+      for (let f = 0; f < 4; f++) {
+        const pixels = Array(gridSize * gridSize).fill('transparent');
+        const cx = Math.floor(gridSize / 2);
+        const by = Math.floor(gridSize * 0.7);
+
+        const drawPixel = (x: number, y: number, color: string) => {
+          if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+            pixels[y * gridSize + x] = color;
+          }
+        };
+
+        // Body
+        for (let y = by - 8; y <= by - 2; y++) {
+          for (let x = cx - 2; x <= cx + 2; x++) {
+            drawPixel(x, y, '#8B4513');
+          }
+        }
+
+        // Head
+        for (let y = by - 12; y <= by - 9; y++) {
+          for (let x = cx - 2; x <= cx + 2; x++) {
+            drawPixel(x, y, '#DEB887');
+          }
+        }
+
+        // Eyes
+        drawPixel(cx - 1, by - 11, '#000');
+        drawPixel(cx + 1, by - 11, '#000');
+
+        // Arms
+        const armSwing = Math.sin(f * Math.PI / 2) * 2;
+        drawPixel(cx - 3, by - 6 + armSwing, '#8B4513');
+        drawPixel(cx + 3, by - 6 - armSwing, '#8B4513');
+
+        // Legs
+        const legPhase = f % 2;
+        const leftLegY = by + (legPhase === 0 ? 0 : 2);
+        const rightLegY = by + (legPhase === 0 ? 2 : 0);
+
+        // Left leg
+        for (let y = by; y <= leftLegY; y++) {
+          drawPixel(cx - 1, y, '#000080');
+        }
+
+        // Right leg
+        for (let y = by; y <= rightLegY; y++) {
+          drawPixel(cx + 1, y, '#000080');
+        }
+
+        // Shoes
+        drawPixel(cx - 1, leftLegY + 1, '#000');
+        drawPixel(cx + 1, rightLegY + 1, '#000');
+
+        newFrames.push(createFrame(pixels));
+      }
+    }
+
+    if (preset === 'y2k_glitter') {
+      // Y2K glitter animation - 4 frames
+      for (let f = 0; f < 4; f++) {
+        const pixels = Array(gridSize * gridSize).fill('transparent');
+
+        const drawPixel = (x: number, y: number, color: string) => {
+          if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+            pixels[y * gridSize + x] = color;
+          }
+        };
+
+        // Glitter particles
+        const colors = ['#FF00FF', '#00FFFF', '#FFFF00', '#FF0080', '#8000FF', '#00FF80'];
+        for (let i = 0; i < 20; i++) {
+          const x = Math.floor((Math.sin(f * Math.PI / 2 + i * 0.5) + 1) * gridSize / 2);
+          const y = Math.floor((Math.cos(f * Math.PI / 2 + i * 0.7) + 1) * gridSize / 2);
+          const color = colors[i % colors.length];
+          const sparkle = Math.sin(f * Math.PI / 2 + i) > 0.5;
+          if (sparkle) {
+            drawPixel(x, y, color);
+            // Add sparkle effect
+            if (x + 1 < gridSize) drawPixel(x + 1, y, 'rgba(255,255,255,0.8)');
+            if (y + 1 < gridSize) drawPixel(x, y + 1, 'rgba(255,255,255,0.8)');
+          }
+        }
+
+        // Central burst
+        const cx = Math.floor(gridSize / 2);
+        const cy = Math.floor(gridSize / 2);
+        for (let r = 1; r <= 3; r++) {
+          for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+            const x = Math.round(cx + r * Math.cos(a + f * Math.PI / 2));
+            const y = Math.round(cy + r * Math.sin(a + f * Math.PI / 2));
+            const color = colors[Math.floor(a / (Math.PI / 3)) % colors.length];
+            drawPixel(x, y, color);
+          }
+        }
+
+        // Rainbow trail
+        for (let i = 0; i < 8; i++) {
+          const angle = f * Math.PI / 2 + i * Math.PI / 4;
+          const x = Math.round(cx + 6 * Math.cos(angle));
+          const y = Math.round(cy + 6 * Math.sin(angle));
+          const color = colors[i % colors.length];
+          drawPixel(x, y, `rgba(${color.slice(1, 3)},${color.slice(3, 5)},${color.slice(5, 7)},0.6)`);
+        }
+
+        newFrames.push(createFrame(pixels));
+      }
+    }
+
     setFrames(newFrames);
     setCurrentFrameIndex(0);
     setIsPlaying(true);
+    addXp(5, 'animation');
+    updateStreak();
   };
 
   const applyEffect = (effect: 'glow' | 'sparkle' | 'outline' | 'remix') => {
@@ -660,6 +1263,9 @@ export default function App() {
     });
     if (res.ok) {
       fetchData();
+      playSaveSound();
+      addXp(10, 'save');
+      updateStreak();
       confetti({
         particleCount: 150,
         spread: 70,
@@ -785,6 +1391,25 @@ export default function App() {
             onChange={(e) => setProjectName(e.target.value)}
             className="bg-transparent border-none focus:ring-0 text-white font-bold text-sm w-40"
           />
+          {/* Gamification Display */}
+          <div className="flex items-center gap-3 ml-4 px-3 py-1 bg-zinc-900/50 rounded-lg">
+            <div className="flex items-center gap-1">
+              <Star className="w-3 h-3 text-yellow-400" />
+              <span className="text-[10px] font-bold text-zinc-300">LVL {level}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Zap className="w-3 h-3 text-purple-400" />
+              <span className="text-[10px] font-bold text-zinc-300">{xp}/{xpForNextLevel(level)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Flame className="w-3 h-3 text-orange-400" />
+              <span className="text-[10px] font-bold text-zinc-300">{streak}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Trophy className="w-3 h-3 text-green-400" />
+              <span className="text-[10px] font-bold text-zinc-300">{achievements.length}</span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Auto-saving...</span>
@@ -876,12 +1501,51 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
 
+        {/* Nudge Panel */}
+        <AnimatePresence>
+          {showNudgePanel && selection && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-zinc-900 border border-zinc-800 rounded-2xl p-3 flex items-center gap-2 shadow-2xl z-50"
+            >
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Move</span>
+              <button 
+                onClick={() => nudgeSelection(0, -1)}
+                className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+              >
+                ↑
+              </button>
+              <button 
+                onClick={() => nudgeSelection(0, 1)}
+                className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+              >
+                ↓
+              </button>
+              <button 
+                onClick={() => nudgeSelection(-1, 0)}
+                className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+              >
+                ←
+              </button>
+              <button 
+                onClick={() => nudgeSelection(1, 0)}
+                className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+              >
+                →
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Floating Tool Panel */}
         <div className="absolute right-4 top-4 bottom-4 flex flex-col gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-3xl border border-zinc-800 shadow-2xl overflow-y-auto scrollbar-hide z-40 max-h-[calc(100%-2rem)]">
           <ToolButton active={tool === 'pencil'} onClick={() => setTool('pencil')} icon={<Pencil className="w-5 h-5" />} label="Pencil" />
           <ToolButton active={tool === 'fill'} onClick={() => setTool('fill')} icon={<PaintBucket className="w-5 h-5" />} label="Fill" />
           <ToolButton active={tool === 'eraser'} onClick={() => setTool('eraser')} icon={<Eraser className="w-5 h-5" />} label="Eraser" />
           <ToolButton active={tool === 'picker'} onClick={() => setTool('picker')} icon={<Pipette className="w-5 h-5" />} label="Picker" />
+          <ToolButton active={tool === 'select'} onClick={() => setTool('select')} icon={<Square className="w-5 h-5" />} label="Select" />
           <div className="h-[1px] bg-zinc-800 mx-2 my-1" />
           <ToolButton active={false} onClick={undo} icon={<Undo2 className="w-5 h-5" />} label="Undo" />
           <ToolButton active={false} onClick={redo} icon={<Undo2 className="w-5 h-5 scale-x-[-1]" />} label="Redo" />
@@ -948,7 +1612,10 @@ export default function App() {
           <div className="flex flex-col gap-1 pr-4 border-r border-zinc-900">
           <div className="flex gap-2">
             <button 
-              onClick={() => setIsPlaying(!isPlaying)}
+              onClick={() => {
+                setIsPlaying(!isPlaying);
+                playAnimationSound();
+              }}
               className={`p-2 rounded-lg transition-all ${isPlaying ? 'bg-red-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
             >
               {isPlaying ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
@@ -966,6 +1633,13 @@ export default function App() {
             >
               <Layers className="w-4 h-4" />
             </button>
+            <button 
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={`p-2 rounded-lg transition-all ${soundEnabled ? 'bg-green-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+              title="Sound Effects"
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
             <div className="h-8 w-[1px] bg-zinc-900 mx-1" />
             <div className="flex gap-1 bg-zinc-900 p-1 rounded-lg items-center">
               <Wand2 className="w-3 h-3 text-purple-400 mx-1" />
@@ -974,6 +1648,13 @@ export default function App() {
               <button onClick={() => applyAnimationPreset('blink')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">BLINK</button>
               <button onClick={() => applyAnimationPreset('pulse')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">PULSE</button>
               <button onClick={() => applyAnimationPreset('shake')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">SHAKE</button>
+              <button onClick={() => applyAnimationPreset('walk_cat')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">CAT</button>
+              <button onClick={() => applyAnimationPreset('spin_star')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">STAR</button>
+              <button onClick={() => applyAnimationPreset('bounce_ball')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">BALL</button>
+              <button onClick={() => applyAnimationPreset('pixel_fire')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">FIRE</button>
+              <button onClick={() => applyAnimationPreset('neon_heart')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">HEART</button>
+              <button onClick={() => applyAnimationPreset('walk_cycle')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">WALK</button>
+              <button onClick={() => applyAnimationPreset('y2k_glitter')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">GLITTER</button>
             </div>
           </div>
             <div className="flex items-center gap-2 mt-1">
@@ -1718,6 +2399,41 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Achievement Modal */}
+      <AnimatePresence>
+        {showAchievementModal && currentAchievement && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200] pointer-events-none"
+          >
+            <motion.div 
+              initial={{ scale: 0.8, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.8, y: 20 }}
+              className="bg-gradient-to-br from-yellow-400 to-orange-500 p-6 rounded-3xl shadow-2xl max-w-sm mx-4 pointer-events-auto"
+            >
+              <div className="text-center">
+                <motion.div
+                  animate={{ rotate: [0, -10, 10, -10, 0] }}
+                  transition={{ duration: 0.5, delay: 0.2 }}
+                  className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4"
+                >
+                  <Trophy className="w-8 h-8 text-yellow-500" />
+                </motion.div>
+                <h3 className="text-xl font-bold text-white mb-2">Achievement Unlocked!</h3>
+                <p className="text-yellow-100 font-bold">{currentAchievement}</p>
+                <div className="flex items-center justify-center gap-2 mt-4 text-yellow-200">
+                  <Star className="w-4 h-4" />
+                  <span className="text-sm font-bold">+50 XP</span>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Bottom Navigation */}
       <nav className="h-16 border-t border-zinc-900 bg-zinc-950/80 backdrop-blur-xl flex items-center px-4 gap-2 flex-shrink-0">
