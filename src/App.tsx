@@ -436,7 +436,6 @@ export default function App() {
   const coreHistoryRef = useRef<CoreHistorySnapshot>({ entries: [], index: -1 });
   const coreCommandStackRef = useRef<CommandStack | null>(null);
   const perfMetricsRef = useRef<{ strokeMs: number[]; fillMs: number[] }>({ strokeMs: [], fillMs: [] });
-  const perfMetricCounterRef = useRef(0);
   const strokeDraftRef = useRef<string[] | null>(null);
   const strokeFrameIndexRef = useRef<number | null>(null);
   const paintRafRef = useRef<number | null>(null);
@@ -449,26 +448,6 @@ export default function App() {
     if (bucket.length > 240) {
       bucket.shift();
     }
-
-    perfMetricCounterRef.current += 1;
-    if (perfMetricCounterRef.current % 60 !== 0) return;
-
-    const summarize = (values: number[]) => {
-      if (!values.length) return { avg: 0, p95: 0, n: 0 };
-      const sorted = [...values].sort((a, b) => a - b);
-      const average = values.reduce((sum, value) => sum + value, 0) / values.length;
-      const p95Index = Math.floor((sorted.length - 1) * 0.95);
-      return {
-        avg: Number(average.toFixed(2)),
-        p95: Number(sorted[p95Index].toFixed(2)),
-        n: values.length,
-      };
-    };
-
-    console.info('[PixelStudioCore perf]', {
-      stroke: summarize(perfMetricsRef.current.strokeMs),
-      fill: summarize(perfMetricsRef.current.fillMs),
-    });
   }, []);
 
   const cloneHistorySnapshot = useCallback((snapshot: CoreHistorySnapshot): CoreHistorySnapshot => ({
