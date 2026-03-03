@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Pencil, 
   Eraser, 
@@ -43,13 +43,22 @@ import {
   ArrowRight,
   Clock,
   Volume2,
-  VolumeX
+  VolumeX,
+  Grid,
+  Coins,
+  PiggyBank,
+  Map,
+  Gamepad2,
+  PlugZap,
+  ShoppingBag,
+  Wallet,
+  BadgeDollarSign
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { getTemplatePixels } from './templateData';
 import { Frame, Project, ProjectData, UserStats, Challenge, Submission } from './types';
-import { PixelCanvas } from './PixelCanvas';
+import { PixelCanvas, PixelCanvasHandle } from './PixelCanvas';
 
 // --- Constants & Assets ---
 
@@ -75,6 +84,122 @@ const TRENDING_PALETTES = [
   { name: 'Soft Girl', colors: ['#FFB6C1', '#FFD1DC', '#FFF0F5', '#E6E6FA', '#F0F8FF'] },
   { name: 'Street Mode', colors: ['#1A1A1A', '#FF4400', '#00FF00', '#FFFFFF', '#888888'] },
 ];
+
+type IconComponent = React.ComponentType<{ className?: string }>;
+
+const STUDIO_DESTINATIONS: Array<{
+  id: string;
+  title: string;
+  description: string;
+  gradient: string;
+  icon: IconComponent;
+  badge: string;
+  tasks: string[];
+}> = [
+  {
+    id: 'creator-hq',
+    title: 'Creator HQ',
+    description: 'Pin your favorite loops, sync drafts, and earn XP streak boosts.',
+    gradient: 'from-purple-600 to-indigo-600',
+    icon: Sparkles,
+    badge: 'Live Sync',
+    tasks: ['Drop a new frame pack', 'Share one animation to the feed'],
+  },
+  {
+    id: 'motion-lab',
+    title: 'Motion Lab',
+    description: 'Preset sandbox for testing tween stacks and physics trails.',
+    gradient: 'from-blue-600 to-cyan-500',
+    icon: Gamepad2,
+    badge: 'Beta',
+    tasks: ['Queue bounce + float combo', 'Record a reference pass'],
+  },
+  {
+    id: 'template-market',
+    title: 'Template Market',
+    description: 'Browse studio-made bases and remix them into your own drops.',
+    gradient: 'from-rose-500 to-orange-500',
+    icon: ShoppingBag,
+    badge: '15 new',
+    tasks: ['Unlock a 64x64 pro base', 'Publish a remix set'],
+  },
+  {
+    id: 'sound-forge',
+    title: 'Sound Forge',
+    description: 'Pair bloom SFX and gamified cues with each animation beat.',
+    gradient: 'from-emerald-500 to-lime-500',
+    icon: PlugZap,
+    badge: 'Audio',
+    tasks: ['Author a new draw sound', 'Level-up your motion alerts'],
+  },
+];
+
+const PLUGIN_LIBRARY: Array<{
+  id: string;
+  name: string;
+  description: string;
+  costCoins: number;
+  costGems: number;
+  icon: IconComponent;
+  badge: string;
+  boost: string;
+}> = [
+  {
+    id: 'layer-mixer',
+    name: 'Layer Mixer',
+    description: 'Blend template base pixels with live strokes per-frame.',
+    costCoins: 420,
+    costGems: 4,
+    icon: Layers,
+    badge: 'Stack',
+    boost: '+20% layering speed',
+  },
+  {
+    id: 'ai-muse',
+    name: 'Muse Sparks',
+    description: 'Procedurally suggests palettes + shading for current scene.',
+    costCoins: 680,
+    costGems: 6,
+    icon: Sparkles,
+    badge: 'Assist',
+    boost: '+15 inspiration',
+  },
+  {
+    id: 'mirror-pro',
+    name: 'Mirror Pro',
+    description: 'Advanced symmetry modes with radial + diagonal mirrors.',
+    costCoins: 520,
+    costGems: 3,
+    icon: Maximize2,
+    badge: 'Precision',
+    boost: 'New radial brush paths',
+  },
+  {
+    id: 'path-fx',
+    name: 'Path FX',
+    description: 'Apply motion trails and easing stacks to onion skin previews.',
+    costCoins: 760,
+    costGems: 8,
+    icon: PlugZap,
+    badge: 'Motion',
+    boost: 'Preset motion trails',
+  },
+];
+
+const DAILY_STUDIO_TASKS: Array<{
+  id: string;
+  label: string;
+  rewardCoins: number;
+  rewardGems: number;
+}> = [
+  { id: 'share-loop', label: 'Export one animation loop', rewardCoins: 150, rewardGems: 0 },
+  { id: 'unlock-template', label: 'Start with a new template base', rewardCoins: 120, rewardGems: 1 },
+  { id: 'earn-xp', label: 'Gain 50 XP today', rewardCoins: 200, rewardGems: 2 },
+];
+
+type StudioTask = (typeof DAILY_STUDIO_TASKS)[number] & { claimed: boolean };
+
+const MAX_FRAMES = 40;
 
 // --- Components ---
 
@@ -112,7 +237,7 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
 
 export default function App() {
   // Navigation & UI State
-  const [activeTab, setActiveTab] = useState<'create' | 'closet' | 'challenges' | 'profile'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'studio' | 'closet' | 'challenges' | 'profile'>('create');
   const [onboarding, setOnboarding] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false);
   
@@ -123,7 +248,6 @@ export default function App() {
   const [selectedColor, setSelectedColor] = useState('#ffffff');
   const [palette, setPalette] = useState<string[]>(STARTER_PALETTE);
   const [tool, setTool] = useState<'pencil' | 'eraser' | 'fill' | 'picker' | 'select'>('pencil');
-  const [isMouseDown, setIsMouseDown] = useState(false);
   const [projectName, setProjectName] = useState('New Identity');
   const [history, setHistory] = useState<string[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -141,10 +265,23 @@ export default function App() {
   const [activePaletteTab, setActivePaletteTab] = useState<'current' | 'saved' | 'trending'>('current');
   const [savedPalettes, setSavedPalettes] = useState<{name: string, colors: string[]}[]>(TRENDING_PALETTES);
   const [paletteName, setPaletteName] = useState('My New Palette');
+  const [frameNotice, setFrameNotice] = useState<string | null>(null);
+  const [showGrid, setShowGrid] = useState(true);
+  const [brushSize, setBrushSize] = useState<1 | 2 | 4>(1);
+  const [eraserSize, setEraserSize] = useState<1 | 3 | 6>(3);
+  const [coins, setCoins] = useState(1250);
+  const [gems, setGems] = useState(18);
+  const [ownedPlugins, setOwnedPlugins] = useState<string[]>(['layer-mixer']);
+  const [studioFeed, setStudioFeed] = useState<string[]>(['Studio synced • Ready to explore.']);
+  const [dailyTasks, setDailyTasks] = useState<StudioTask[]>(() => DAILY_STUDIO_TASKS.map(task => ({ ...task, claimed: false })));
+  const [studioNotice, setStudioNotice] = useState<string | null>(null);
 
   // Sound System
   const [soundEnabled, setSoundEnabled] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const pixelCanvasRef = useRef<PixelCanvasHandle | null>(null);
+  const frameNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const studioNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const initAudioContext = () => {
     if (!audioContextRef.current) {
@@ -176,7 +313,90 @@ export default function App() {
       console.warn('Audio playback failed:', error);
     }
   };
+  const playDrawSound = () => playSound(800, 0.05, 'square', 0.05);
+  const playEraseSound = () => playSound(200, 0.1, 'sawtooth', 0.03);
+  const playSelectSound = () => playSound(600, 0.1, 'sine', 0.08);
+  const playNudgeSound = () => playSound(400, 0.08, 'triangle', 0.06);
+  const playAnimationSound = () => playSound(1000, 0.15, 'sine', 0.04);
+  const playSaveSound = () => playSound(1200, 0.2, 'sine', 0.07);
+  const playAchievementSound = () => playSound(1500, 0.3, 'sine', 0.1);
+  const showFrameNotice = (message: string) => {
+    if (frameNoticeTimeout.current) {
+      clearTimeout(frameNoticeTimeout.current);
+    }
+    setFrameNotice(message);
+    frameNoticeTimeout.current = setTimeout(() => {
+      setFrameNotice(null);
+      frameNoticeTimeout.current = null;
+    }, 2400);
+  };
 
+  const showStudioNotice = (message: string) => {
+    if (studioNoticeTimeout.current) {
+      clearTimeout(studioNoticeTimeout.current);
+    }
+    setStudioNotice(message);
+    studioNoticeTimeout.current = setTimeout(() => {
+      setStudioNotice(null);
+      studioNoticeTimeout.current = null;
+    }, 2400);
+  };
+
+  const addStudioFeedEntry = (entry: string) => {
+    setStudioFeed(prev => [entry, ...prev].slice(0, 6));
+  };
+
+  const handleTravel = (destinationId: string) => {
+    const destination = STUDIO_DESTINATIONS.find(dest => dest.id === destinationId);
+    if (!destination) return;
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    addStudioFeedEntry(`${destination.title} synced • ${timestamp}`);
+    showStudioNotice(`Now exploring ${destination.title}`);
+    playSelectSound();
+  };
+
+  const handlePurchasePlugin = (pluginId: string) => {
+    const plugin = PLUGIN_LIBRARY.find(item => item.id === pluginId);
+    if (!plugin) return;
+    if (ownedPlugins.includes(pluginId)) {
+      showStudioNotice(`${plugin.name} already installed`);
+      return;
+    }
+    if (coins < plugin.costCoins || gems < plugin.costGems) {
+      showStudioNotice('Need more coins or gems');
+      return;
+    }
+    setCoins(prev => prev - plugin.costCoins);
+    setGems(prev => prev - plugin.costGems);
+    setOwnedPlugins(prev => [...prev, pluginId]);
+    addStudioFeedEntry(`${plugin.name} installed • ${plugin.boost}`);
+    showStudioNotice(`${plugin.name} unlocked`);
+    playAchievementSound();
+  };
+
+  const handleClaimTask = (taskId: string) => {
+    const task = dailyTasks.find(item => item.id === taskId);
+    if (!task) return;
+    if (task.claimed) {
+      showStudioNotice('Task already claimed');
+      return;
+    }
+    setDailyTasks(prev => prev.map(item => item.id === taskId ? { ...item, claimed: true } : item));
+    setCoins(prev => prev + task.rewardCoins);
+    setGems(prev => prev + task.rewardGems);
+    const rewardParts = [`+${task.rewardCoins} coins`];
+    if (task.rewardGems) {
+      rewardParts.push(`+${task.rewardGems} gems`);
+    }
+    addStudioFeedEntry(`${task.label} • ${rewardParts.join(' ')}`);
+    showStudioNotice(rewardParts.join(' '));
+    playAchievementSound();
+  };
+
+  const travelToStudio = (destinationId: string) => {
+    setActiveTab('studio');
+    setTimeout(() => handleTravel(destinationId), 0);
+  };
   // Gamification System
   const [xp, setXp] = useState(0);
   const [level, setLevel] = useState(1);
@@ -267,6 +487,26 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   // Effects
+  useEffect(() => {
+    return () => {
+      if (frameNoticeTimeout.current) {
+        clearTimeout(frameNoticeTimeout.current);
+      }
+      if (studioNoticeTimeout.current) {
+        clearTimeout(studioNoticeTimeout.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'studio' && studioNotice) {
+      if (studioNoticeTimeout.current) {
+        clearTimeout(studioNoticeTimeout.current);
+        studioNoticeTimeout.current = null;
+      }
+      setStudioNotice(null);
+    }
+  }, [activeTab]);
   useEffect(() => {
     fetchData();
     const interval = setInterval(autoSave, 5000);
@@ -444,111 +684,134 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, selection?.active, nudgeSelection, clearSelection]);
 
-  const handlePixelAction = (index: number, isInitialClick = false) => {
-    const currentFrame = frames[currentFrameIndex];
-    const currentPixels = currentFrame.pixels;
-    
-    if (tool === 'picker') {
-      // Pick from user pixels first, then base pixels
-      if (currentPixels[index] !== 'transparent') {
-        setSelectedColor(currentPixels[index]);
-        setTool('pencil');
-      } else if (currentFrame.basePixels && currentFrame.basePixels[index] !== 'transparent') {
-        setSelectedColor(currentFrame.basePixels[index]);
-        setTool('pencil');
-      }
-      return;
-    }
-
-    if (tool === 'fill') {
-      if (!isInitialClick) return;
-      const targetColor = currentPixels[index];
-      const newPixels = floodFill(index, targetColor, selectedColor, currentPixels);
-      if (newPixels) {
-        updateFrame(newPixels);
-        saveToHistory(newPixels);
-        playDrawSound();
-      }
-      return;
-    }
-
-    const color = tool === 'pencil' ? selectedColor : 'transparent';
-    if (currentPixels[index] === color) return;
-
-    const newPixels = [...currentPixels];
-    newPixels[index] = color;
-
-    if (mirrorMode) {
-      const x = index % gridSize;
-      const y = Math.floor(index / gridSize);
-      const mirrorX = gridSize - 1 - x;
-      const mirrorIndex = y * gridSize + mirrorX;
-      newPixels[mirrorIndex] = color;
-    }
-
-    updateFrame(newPixels);
-    if (isInitialClick) {
-      saveToHistory(newPixels);
-      updateStreak();
-      if (tool === 'pencil') {
-        playDrawSound();
-        addXp(1, 'draw');
-      } else if (tool === 'eraser') {
-        playEraseSound();
-        addXp(1, 'erase');
-      }
-    }
-  };
-
   const updateFrame = (pixels: string[]) => {
     const newFrames = [...frames];
     newFrames[currentFrameIndex] = { ...newFrames[currentFrameIndex], pixels };
     setFrames(newFrames);
   };
 
-  const floodFill = (index: number, targetColor: string, replacementColor: string, pixels: string[]) => {
-    if (targetColor === replacementColor) return;
-    if (pixels[index] !== targetColor) return;
-    const stack = [index];
-    const newPixels = [...pixels];
-    while (stack.length > 0) {
-      const curr = stack.pop()!;
-      if (newPixels[curr] === targetColor) {
-        newPixels[curr] = replacementColor;
-        const x = curr % gridSize;
-        const y = Math.floor(curr / gridSize);
-        if (x > 0) stack.push(curr - 1);
-        if (x < gridSize - 1) stack.push(curr + 1);
-        if (y > 0) stack.push(curr - gridSize);
-        if (y < gridSize - 1) stack.push(curr + gridSize);
-      }
+  const handlePixelChange = useCallback((x: number, y: number, color: string) => {
+    let updatedPixels: string[] | null = null;
+    setFrames(prev => {
+      const next = [...prev];
+      const frame = next[currentFrameIndex];
+      if (!frame) return prev;
+      const idx = y * gridSize + x;
+      const normalized = color === 'transparent' ? 'transparent' : color;
+      if (frame.pixels[idx] === normalized) return prev;
+      const pixels = [...frame.pixels];
+      pixels[idx] = normalized;
+      next[currentFrameIndex] = { ...frame, pixels };
+      updatedPixels = pixels;
+      return next;
+    });
+    return updatedPixels;
+  }, [currentFrameIndex, gridSize]);
+
+  const handleStrokeComplete = (pixels: string[] | null, action: 'draw' | 'erase' | 'fill') => {
+    if (!pixels) return;
+    saveToHistory(pixels);
+    updateStreak();
+    if (action === 'draw') {
+      playDrawSound();
+      addXp(1, 'draw');
+    } else if (action === 'erase') {
+      playEraseSound();
+      addXp(1, 'erase');
+    } else {
+      playDrawSound();
+      addXp(2, 'fill');
     }
-    return newPixels;
+  };
+
+  const handleColorPick = (color: string) => {
+    setSelectedColor(color);
+    setTool('pencil');
+    playSelectSound();
+  };
+
+  const handleSelectionChange = useCallback((sel: { active: boolean; x0: number; y0: number; x1: number; y1: number } | null) => {
+    setSelection(sel);
+    setShowNudgePanel(Boolean(sel?.active));
+  }, []);
+
+  const createBlankFrame = (): Frame => ({
+    id: Math.random().toString(36).substr(2, 9),
+    pixels: Array(gridSize * gridSize).fill('transparent'),
+    duration: 1,
+  });
+
+  const handleAddFrame = () => {
+    if (frames.length >= MAX_FRAMES) {
+      showFrameNotice(`Frame limit reached (${MAX_FRAMES})`);
+      return;
+    }
+    const newFrame = createBlankFrame();
+    setFrames([...frames, newFrame]);
+    setCurrentFrameIndex(frames.length);
+    setPreviewFrameIndex(frames.length);
+  };
+
+  const handleDuplicateFrame = (index: number) => {
+    if (frames.length >= MAX_FRAMES) {
+      showFrameNotice(`Frame limit reached (${MAX_FRAMES})`);
+      return;
+    }
+    const source = frames[index];
+    const duplicated: Frame = {
+      ...source,
+      id: Math.random().toString(36).substr(2, 9),
+      pixels: [...source.pixels],
+      basePixels: source.basePixels ? [...source.basePixels] : undefined,
+    };
+    const newFrames = [...frames];
+    newFrames.splice(index + 1, 0, duplicated);
+    setFrames(newFrames);
+    setCurrentFrameIndex(index + 1);
+    setPreviewFrameIndex(index + 1);
+  };
+
+  const handleDeleteFrame = (index: number) => {
+    if (frames.length <= 1) {
+      showFrameNotice('At least one frame is required');
+      return;
+    }
+    const newFrames = frames.filter((_, idx) => idx !== index);
+    setFrames(newFrames);
+    setCurrentFrameIndex((prev) => {
+      if (prev > index) return prev - 1;
+      if (prev === index) return Math.max(0, index - 1);
+      return prev;
+    });
+    setPreviewFrameIndex((prev) => Math.min(prev, newFrames.length - 1));
   };
 
   const nudgeSelection = (dx: number, dy: number) => {
-    if (!selection) return;
+    if (!selection?.active) return;
     playNudgeSound();
-    // This will be handled by the PixelCanvas component
-    setSelection(prev => {
-      if (!prev) return null;
-      const w = Math.abs(prev.x1 - prev.x0) + 1;
-      const h = Math.abs(prev.y1 - prev.y0) + 1;
-      const newX0 = Math.max(0, Math.min(gridSize - w, prev.x0 + dx));
-      const newY0 = Math.max(0, Math.min(gridSize - h, prev.y0 + dy));
-      return {
-        ...prev,
-        x0: newX0,
-        y0: newY0,
-        x1: newX0 + w - 1,
-        y1: newY0 + h - 1,
-      };
-    });
+    pixelCanvasRef.current?.nudgeSelection(dx, dy);
   };
 
   const clearSelection = () => {
+    pixelCanvasRef.current?.clearSelection();
     setSelection(null);
     setShowNudgePanel(false);
+  };
+
+  const clearCanvas = () => {
+    const blankPixels = Array(gridSize * gridSize).fill('transparent');
+    setFrames(prev => {
+      const next = [...prev];
+      const frame = next[currentFrameIndex];
+      if (!frame) return prev;
+      next[currentFrameIndex] = { ...frame, pixels: blankPixels };
+      return next;
+    });
+    saveToHistory(blankPixels);
+    pixelCanvasRef.current?.clearSelection();
+    setSelection(null);
+    setShowNudgePanel(false);
+    playEraseSound();
   };
 
   const remixColors = () => {
@@ -1301,6 +1564,8 @@ export default function App() {
     saveToHistory(emptyPixels);
   };
 
+  const canAddMoreFrames = frames.length < MAX_FRAMES;
+
   // --- Sub-Views ---
 
   const OnboardingView = () => (
@@ -1341,6 +1606,23 @@ export default function App() {
         >
           <div className="max-w-2xl w-full">
             <h2 className="text-2xl font-display italic text-white mb-8 text-center">Choose a Starting Base</h2>
+            <div className="mb-8 rounded-[28px] bg-gradient-to-r from-rose-500/30 to-orange-500/30 border border-white/10 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4" /> Template Market Live
+                </p>
+                <p className="text-sm text-white/90 mt-1">Need pro bases? Jump to the Studio market for fresh drops.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowTemplates(false);
+                  travelToStudio('template-market');
+                }}
+                className="w-full md:w-auto px-4 py-2 rounded-2xl bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-white/30"
+              >
+                Visit Template Market
+              </button>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {TEMPLATES.map(t => (
                 <button
@@ -1414,6 +1696,13 @@ export default function App() {
         <div className="flex items-center gap-3">
           <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Auto-saving...</span>
           <Button 
+            variant="ghost"
+            onClick={() => travelToStudio('creator-hq')}
+            className="px-3 py-2 text-xs flex items-center gap-2 border border-zinc-800"
+          >
+            <Map className="w-3 h-3" /> Studio HQ
+          </Button>
+          <Button 
             variant="ghost" 
             onClick={() => setShowTemplates(true)} 
             className="px-3 py-2 text-xs flex items-center gap-2 border border-zinc-800"
@@ -1448,56 +1737,26 @@ export default function App() {
             initial={{ opacity: 0.8, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.1 }}
-            className="relative shadow-2xl shadow-black/50 border-4 border-zinc-900 bg-zinc-950"
-            style={{ transform: `scale(${zoom})`, transition: 'transform 0.2s ease-out' }}
-            onMouseDown={() => setIsMouseDown(true)}
-            onMouseUp={() => setIsMouseDown(false)}
-            onMouseLeave={() => setIsMouseDown(false)}
+            className="relative shadow-2xl shadow-black/50 border-4 border-zinc-900 bg-zinc-950 rounded-3xl p-2"
           >
-            {/* Onion Skin Layer */}
-            {onionSkinning && currentFrameIndex > 0 && (
-              <div 
-                className="grid pixel-grid absolute inset-0 pointer-events-none opacity-20 z-0"
-                style={{ 
-                  gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
-                }}
-              >
-                {frames[currentFrameIndex - 1].pixels.map((color, i) => (
-                  <div
-                    key={`onion-${i}`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-            )}
-
-            <div 
-              className="grid pixel-grid relative z-10"
-              style={{ 
-                gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
-                width: 'min(70vh, 70vw)',
-                aspectRatio: '1/1'
-              }}
-            >
-              {frames[currentFrameIndex].pixels.map((color, i) => {
-                const baseColor = frames[currentFrameIndex].basePixels?.[i];
-                const displayColor = color !== 'transparent' ? color : baseColor || 'transparent';
-                return (
-                  <motion.div
-                    key={i}
-                    initial={false}
-                    animate={{ 
-                      backgroundColor: displayColor,
-                      scale: isMouseDown && tool !== 'picker' ? 1.05 : 1
-                    }}
-                    whileHover={{ scale: 1.1, zIndex: 10, boxShadow: "0 0 15px rgba(168, 85, 247, 0.4)" }}
-                    onMouseDown={() => handlePixelAction(i, true)}
-                    onMouseEnter={() => isMouseDown && handlePixelAction(i)}
-                    className="w-full h-full border-[0.1px] border-white/5 cursor-crosshair"
-                  />
-                );
-              })}
-            </div>
+            <PixelCanvas
+              ref={pixelCanvasRef}
+              gridSize={gridSize}
+              frames={frames}
+              currentFrameIndex={currentFrameIndex}
+              selectedColor={selectedColor}
+              tool={tool}
+              mirrorMode={mirrorMode}
+              zoom={zoom}
+              brushSize={brushSize}
+              eraserSize={eraserSize}
+              showGrid={showGrid}
+              onionSkinning={onionSkinning}
+              onPixelChange={handlePixelChange}
+              onStrokeComplete={handleStrokeComplete}
+              onColorPick={handleColorPick}
+              onSelectionChange={handleSelectionChange}
+            />
           </motion.div>
         </AnimatePresence>
 
@@ -1557,6 +1816,7 @@ export default function App() {
           <div className="h-[1px] bg-zinc-800 mx-2 my-1" />
           <ToolButton active={false} onClick={clearCanvas} icon={<RotateCcw className="w-5 h-5" />} label="Clear Canvas" />
           <ToolButton active={mirrorMode} onClick={() => setMirrorMode(!mirrorMode)} icon={<Maximize2 className="w-5 h-5" />} label="Mirror" />
+          <ToolButton active={showGrid} onClick={() => setShowGrid(!showGrid)} icon={<Grid className="w-5 h-5" />} label="Grid" />
           <ToolButton active={showPreview} onClick={() => setShowPreview(!showPreview)} icon={<Monitor className="w-5 h-5" />} label="Preview" />
           
           {!isTeenMode && (
@@ -1568,6 +1828,36 @@ export default function App() {
               </div>
             </div>
           )}
+
+          <div className="bg-zinc-900/70 border border-zinc-800 rounded-2xl p-2 flex flex-col gap-2">
+            <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest text-center">Brush Size</span>
+            <div className="flex gap-1">
+              {[1, 2, 4].map(size => (
+                <button
+                  key={`brush-${size}`}
+                  onClick={() => setBrushSize(size as 1 | 2 | 4)}
+                  className={`flex-1 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest border ${brushSize === size ? 'bg-purple-600 text-white border-purple-400' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}
+                >
+                  {size}x
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-zinc-900/70 border border-zinc-800 rounded-2xl p-2 flex flex-col gap-2">
+            <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest text-center">Eraser Size</span>
+            <div className="flex gap-1">
+              {[1, 3, 6].map(size => (
+                <button
+                  key={`eraser-${size}`}
+                  onClick={() => setEraserSize(size as 1 | 3 | 6)}
+                  className={`flex-1 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest border ${eraserSize === size ? 'bg-emerald-500 text-black border-emerald-300' : 'border-zinc-800 text-zinc-500 hover:border-zinc-600'}`}
+                >
+                  {size}x
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="px-2 py-2 flex flex-col items-center gap-1 mt-auto">
             <input 
@@ -1608,7 +1898,7 @@ export default function App() {
 
       {/* Animation Bar (Teen Mode Only) */}
       {isTeenMode && (
-        <div className="h-28 border-t border-zinc-900 bg-zinc-950 flex items-center px-6 gap-4 overflow-x-auto scrollbar-hide flex-shrink-0">
+        <div className="relative h-28 border-t border-zinc-900 bg-zinc-950 flex items-center px-6 gap-4 overflow-x-auto scrollbar-hide flex-shrink-0">
           <div className="flex flex-col gap-1 pr-4 border-r border-zinc-900">
           <div className="flex gap-2">
             <button 
@@ -1656,6 +1946,12 @@ export default function App() {
               <button onClick={() => applyAnimationPreset('walk_cycle')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">WALK</button>
               <button onClick={() => applyAnimationPreset('y2k_glitter')} className="px-2 py-1 text-[8px] font-bold text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-all">GLITTER</button>
             </div>
+            <button 
+              onClick={() => travelToStudio('motion-lab')}
+              className="mt-2 flex items-center gap-2 px-3 py-1 rounded-xl border border-zinc-800 text-[8px] font-bold uppercase tracking-widest text-zinc-400 hover:text-white hover:border-purple-500 transition-all"
+            >
+              <Gamepad2 className="w-3 h-3" /> Visit Motion Lab
+            </button>
           </div>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-[8px] font-bold text-zinc-600">FPS</span>
@@ -1668,16 +1964,22 @@ export default function App() {
             </div>
           </div>
 
-          <button 
-            onClick={() => {
-              const newFrame = { id: Math.random().toString(36).substr(2, 9), pixels: Array(gridSize * gridSize).fill('transparent') };
-              setFrames([...frames, newFrame]);
-              setCurrentFrameIndex(frames.length);
-            }}
-            className="flex-shrink-0 w-14 h-14 rounded-xl border-2 border-dashed border-zinc-800 flex items-center justify-center hover:border-zinc-600 transition-all"
-          >
-            <Plus className="w-6 h-6" />
-          </button>
+          <div className="flex flex-col items-center gap-1 flex-shrink-0">
+            <button 
+              onClick={handleAddFrame}
+              disabled={!canAddMoreFrames}
+              title={canAddMoreFrames ? 'Add Frame' : `Frame limit reached (${MAX_FRAMES})`}
+              className={`w-14 h-14 rounded-xl border-2 border-dashed flex items-center justify-center transition-all ${canAddMoreFrames ? 'border-zinc-800 hover:border-zinc-600 text-white' : 'border-red-500/50 text-red-400 cursor-not-allowed opacity-60'}`}
+            >
+              <Plus className="w-6 h-6" />
+            </button>
+            <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest">
+              {frames.length}/{MAX_FRAMES} Frames
+            </span>
+            {!canAddMoreFrames && (
+              <span className="text-[7px] font-bold text-red-400 uppercase tracking-widest">Limit Reached</span>
+            )}
+          </div>
           
           <div className="flex gap-3">
             {frames.map((f, i) => (
@@ -1718,14 +2020,11 @@ export default function App() {
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        const newFrame = { ...f, id: Math.random().toString(36).substr(2, 9) };
-                        const newFrames = [...frames];
-                        newFrames.splice(i + 1, 0, newFrame);
-                        setFrames(newFrames);
-                        setCurrentFrameIndex(i + 1);
+                        handleDuplicateFrame(i);
                       }}
-                      className="p-1 hover:bg-white/20 rounded"
-                      title="Duplicate"
+                      className={`p-1 rounded ${canAddMoreFrames ? 'hover:bg-white/20' : 'opacity-40 cursor-not-allowed'}`}
+                      title={canAddMoreFrames ? 'Duplicate' : `Max ${MAX_FRAMES} frames`}
+                      disabled={!canAddMoreFrames}
                     >
                       <Copy className="w-3 h-3 text-white" />
                     </button>
@@ -1747,9 +2046,7 @@ export default function App() {
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          const newFrames = frames.filter((_, idx) => idx !== i);
-                          setFrames(newFrames);
-                          if (currentFrameIndex >= newFrames.length) setCurrentFrameIndex(newFrames.length - 1);
+                          handleDeleteFrame(i);
                         }}
                         className="p-1 hover:bg-red-500/40 rounded"
                       >
@@ -1770,24 +2067,49 @@ export default function App() {
                 </div>
                 
                 {/* Duration Control */}
-                <select 
-                  value={f.duration || 1}
-                  onChange={(e) => {
-                    const newFrames = [...frames];
-                    newFrames[i] = { ...f, duration: parseFloat(e.target.value) };
-                    setFrames(newFrames);
-                  }}
-                  className="bg-zinc-900 text-[8px] font-bold text-zinc-500 uppercase tracking-widest rounded border border-zinc-800 outline-none focus:border-purple-500"
-                >
-                  <option value="0.5">0.5x</option>
-                  <option value="1">1.0x</option>
-                  <option value="2">2.0x</option>
-                  <option value="3">3.0x</option>
-                  <option value="4">4.0x</option>
-                </select>
+                <div className="flex items-center gap-2">
+                  <select 
+                    value={f.duration || 1}
+                    onChange={(e) => {
+                      const newFrames = [...frames];
+                      newFrames[i] = { ...f, duration: parseFloat(e.target.value) };
+                      setFrames(newFrames);
+                    }}
+                    className="bg-zinc-900 text-[8px] font-bold text-zinc-500 uppercase tracking-widest rounded border border-zinc-800 outline-none focus:border-purple-500"
+                  >
+                    <option value="0.5">0.5x</option>
+                    <option value="1">1.0x</option>
+                    <option value="2">2.0x</option>
+                    <option value="3">3.0x</option>
+                    <option value="4">4.0x</option>
+                  </select>
+                  {frames.length > 1 && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteFrame(i);
+                      }}
+                      className="px-2 py-1 text-[8px] font-bold uppercase tracking-widest bg-red-500/20 text-red-300 rounded border border-red-500/40 hover:bg-red-500/30"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
+          <AnimatePresence>
+            {frameNotice && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-zinc-900/95 border border-zinc-800 text-[9px] font-bold text-white px-4 py-1.5 rounded-2xl shadow-lg"
+              >
+                {frameNotice}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
@@ -2065,6 +2387,279 @@ export default function App() {
       </div>
     </div>
   );
+
+  const StudioView = () => {
+    const ownedPluginMeta = PLUGIN_LIBRARY.filter(plugin => ownedPlugins.includes(plugin.id));
+    const completedTasks = dailyTasks.filter(task => task.claimed).length;
+
+    return (
+      <div className="flex-1 flex flex-col gap-8 p-8 overflow-y-auto relative">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <motion.div 
+            whileHover={{ y: -5 }}
+            className="xl:col-span-2 bg-gradient-to-r from-purple-900/50 via-indigo-900/20 to-transparent border border-purple-500/20 rounded-[40px] p-8 relative overflow-hidden"
+          >
+            <div className="flex flex-col gap-6 relative z-10">
+              <div className="flex items-center gap-3 text-purple-300 text-[10px] font-black uppercase tracking-widest">
+                <Map className="w-4 h-4" /> Studio Passport
+              </div>
+              <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+                <div>
+                  <h2 className="text-4xl font-display italic text-white tracking-tight">Keep the studio economy humming.</h2>
+                  <p className="text-zinc-400 text-sm mt-2 max-w-xl">Hop between labs, install plugins, and finish daily briefs to keep your toolkit funded.</p>
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  <div className="px-4 py-3 rounded-2xl bg-black/30 border border-white/10 flex items-center gap-2">
+                    <Coins className="w-4 h-4 text-amber-300" />
+                    <div>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Coins</p>
+                      <p className="text-lg font-mono text-white">{coins.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <div className="px-4 py-3 rounded-2xl bg-black/30 border border-white/10 flex items-center gap-2">
+                    <Gem className="w-4 h-4 text-sky-300" />
+                    <div>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Gems</p>
+                      <p className="text-lg font-mono text-white">{gems}</p>
+                    </div>
+                  </div>
+                  <div className="px-4 py-3 rounded-2xl bg-black/30 border border-white/10 flex items-center gap-2">
+                    <BadgeDollarSign className="w-4 h-4 text-emerald-300" />
+                    <div>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Tasks</p>
+                      <p className="text-lg font-mono text-white">{completedTasks}/{dailyTasks.length}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3 text-[9px] font-bold text-purple-200 uppercase tracking-[0.3em]">
+                <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30">Warp-ready</span>
+                <span className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">Live Sync</span>
+                <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30">Economy Safe</span>
+              </div>
+            </div>
+            <motion.div
+              animate={{ rotate: [0, 6, 0], y: [0, -10, 0] }}
+              transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute -right-10 -bottom-6 w-56 h-56 bg-purple-500/20 rounded-full blur-3xl"
+            />
+          </motion.div>
+
+          <motion.div 
+            whileHover={{ y: -5 }}
+            className="bg-zinc-900 border border-zinc-800 rounded-[40px] p-6 flex flex-col gap-4"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Installed Plugins</p>
+                <p className="text-2xl font-display italic text-white mt-1">{ownedPluginMeta.length}</p>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center">
+                <PlugZap className="w-5 h-5 text-purple-300" />
+              </div>
+            </div>
+            {ownedPluginMeta.length === 0 ? (
+              <p className="text-sm text-zinc-500">Install a plugin to level up your studio toolkit.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {ownedPluginMeta.map(plugin => (
+                  <span key={plugin.id} className="px-3 py-1 rounded-full bg-zinc-800 border border-zinc-700 text-[10px] font-bold uppercase tracking-widest text-zinc-300">
+                    {plugin.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => handleTravel('creator-hq')}
+              className="mt-auto w-full px-4 py-3 rounded-2xl bg-purple-600/20 text-purple-200 border border-purple-500/30 text-[10px] font-bold uppercase tracking-widest hover:bg-purple-600/30 transition-colors"
+            >
+              Quick Sync Jump
+            </button>
+          </motion.div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-2xl font-display italic text-white">Studio Destinations</h3>
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Pick a mission lane</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {STUDIO_DESTINATIONS.map(destination => {
+              const Icon = destination.icon;
+              return (
+                <motion.div
+                  key={destination.id}
+                  whileHover={{ y: -6 }}
+                  className={`rounded-[36px] p-6 border border-white/10 text-white bg-gradient-to-br ${destination.gradient} relative overflow-hidden`}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/80">
+                        <span className="px-3 py-1 rounded-full bg-white/20">{destination.badge}</span>
+                        Mission Deck
+                      </div>
+                      <h4 className="text-2xl font-display italic mt-3">{destination.title}</h4>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-black/20 flex items-center justify-center">
+                      <Icon className="w-6 h-6" />
+                    </div>
+                  </div>
+                  <p className="text-sm text-white/80 mt-4 leading-relaxed">{destination.description}</p>
+                  <ul className="mt-4 space-y-1 text-[11px] text-white/80">
+                    {destination.tasks.map(task => (
+                      <li key={task} className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white/70" />
+                        {task}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    onClick={() => handleTravel(destination.id)}
+                    className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-white/30"
+                  >
+                    <Map className="w-3 h-3" /> Warp Now
+                  </button>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+          <div className="bg-zinc-950 border border-zinc-900 rounded-[32px] p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-display italic text-white">Plugin Library</h3>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Boost your editor</p>
+              </div>
+              <PiggyBank className="w-6 h-6 text-purple-300" />
+            </div>
+            <div className="space-y-4 mt-6">
+              {PLUGIN_LIBRARY.map(plugin => {
+                const Icon = plugin.icon;
+                const isOwned = ownedPlugins.includes(plugin.id);
+                const hasFunds = coins >= plugin.costCoins && gems >= plugin.costGems;
+                return (
+                  <div
+                    key={plugin.id}
+                    className="p-4 rounded-2xl border border-zinc-800 bg-zinc-900/60 flex flex-col gap-4 md:flex-row md:items-center"
+                  >
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center">
+                        <Icon className="w-5 h-5 text-purple-300" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-purple-400 uppercase tracking-widest">{plugin.badge}</span>
+                          {isOwned && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[9px] font-bold uppercase tracking-widest">
+                              Installed
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="text-lg font-display text-white mt-1">{plugin.name}</h4>
+                        <p className="text-sm text-zinc-400 mt-1">{plugin.description}</p>
+                        <p className="text-[11px] text-emerald-300 mt-2 font-bold uppercase tracking-widest">{plugin.boost}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2 text-[11px] font-bold text-zinc-400">
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1 text-amber-300">
+                          <Coins className="w-3 h-3" /> {plugin.costCoins}
+                        </span>
+                        <span className="flex items-center gap-1 text-sky-300">
+                          <Gem className="w-3 h-3" /> {plugin.costGems}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handlePurchasePlugin(plugin.id)}
+                        disabled={!hasFunds || isOwned}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${isOwned ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40 cursor-default' : hasFunds ? 'bg-purple-600 text-white border-purple-400 hover:bg-purple-500' : 'bg-zinc-800 text-zinc-500 border-zinc-700 cursor-not-allowed'}`}
+                      >
+                        {isOwned ? 'Installed' : hasFunds ? 'Install' : 'Need Funds'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6">
+            <div className="bg-zinc-950 border border-zinc-900 rounded-[32px] p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-display italic text-white">Daily Studio Tasks</h3>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Earn rewards for shipping</p>
+                </div>
+                <Wallet className="w-6 h-6 text-emerald-300" />
+              </div>
+              <div className="space-y-4 mt-6">
+                {dailyTasks.map(task => (
+                  <div key={task.id} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900 border border-zinc-800">
+                    <div>
+                      <p className="text-sm font-bold text-white">{task.label}</p>
+                      <div className="flex gap-3 mt-2 text-[10px] font-bold uppercase tracking-widest">
+                        <span className="flex items-center gap-1 text-amber-300">
+                          <Coins className="w-3 h-3" /> +{task.rewardCoins}
+                        </span>
+                        {task.rewardGems > 0 && (
+                          <span className="flex items-center gap-1 text-sky-300">
+                            <Gem className="w-3 h-3" /> +{task.rewardGems}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleClaimTask(task.id)}
+                      disabled={task.claimed}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${task.claimed ? 'bg-zinc-900 text-zinc-600 border-zinc-700 cursor-default' : 'bg-emerald-500 text-black border-emerald-400 hover:bg-emerald-400'}`}
+                    >
+                      {task.claimed ? 'Claimed' : 'Claim'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-zinc-950 border border-zinc-900 rounded-[32px] p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-display italic text-white">Studio Feed</h3>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Latest sync events</p>
+                </div>
+                <PiggyBank className="w-6 h-6 text-pink-300" />
+              </div>
+              <div className="mt-4 space-y-3">
+                {studioFeed.map((entry, index) => (
+                  <div key={`${entry}-${index}`} className="flex items-start gap-3 p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800">
+                    <div className="w-10 h-10 rounded-2xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center">
+                      <Sparkles className="w-4 h-4 text-purple-300" />
+                    </div>
+                    <p className="text-sm text-zinc-300">{entry}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {studioNotice && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="fixed bottom-24 right-8 bg-zinc-900/95 border border-purple-500/30 text-sm font-bold text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-2"
+            >
+              <BadgeDollarSign className="w-4 h-4 text-purple-300" />
+              {studioNotice}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
 
   const ClosetView = () => {
     const categories = ['avatar', 'item', 'room'];
@@ -2377,6 +2972,7 @@ export default function App() {
             className="flex-1 flex flex-col overflow-hidden"
           >
             {activeTab === 'create' && <CreateView />}
+            {activeTab === 'studio' && <StudioView />}
             {activeTab === 'closet' && <ClosetView />}
             {activeTab === 'challenges' && <ChallengesView />}
             {activeTab === 'profile' && <ProfileView />}
@@ -2438,6 +3034,7 @@ export default function App() {
       {/* Bottom Navigation */}
       <nav className="h-16 border-t border-zinc-900 bg-zinc-950/80 backdrop-blur-xl flex items-center px-4 gap-2 flex-shrink-0">
         <TabButton active={activeTab === 'create'} onClick={() => setActiveTab('create')} icon={<PlusCircle className="w-5 h-5" />} label="Create" />
+        <TabButton active={activeTab === 'studio'} onClick={() => setActiveTab('studio')} icon={<Map className="w-5 h-5" />} label="Studio" />
         <TabButton active={activeTab === 'closet'} onClick={() => setActiveTab('closet')} icon={<Shirt className="w-5 h-5" />} label="Closet" />
         <TabButton active={activeTab === 'challenges'} onClick={() => setActiveTab('challenges')} icon={<Target className="w-5 h-5" />} label="Challenges" />
         <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User className="w-5 h-5" />} label="Profile" />
