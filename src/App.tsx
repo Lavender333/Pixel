@@ -1185,6 +1185,48 @@ export default function App() {
     setPreviewFrameIndex((prev) => Math.min(prev, newFrames.length - 1));
   };
 
+  const handlePlaybackToggle = () => {
+    if (frames.length <= 1) {
+      setIsPlaying(false);
+      setPreviewFrameIndex(currentFrameIndex);
+      showFrameNotice('Add at least 2 frames to animate');
+      playErrorSound();
+      return;
+    }
+    setShowPreview(true);
+    setIsPlaying(prev => !prev);
+  };
+
+  const handleFpsChange = (value: number) => {
+    if (!Number.isFinite(value)) return;
+    const clamped = Math.max(1, Math.min(24, Math.round(value)));
+    setFps(clamped);
+  };
+
+  const moveFrame = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    if (toIndex < 0 || toIndex >= frames.length) return;
+
+    const reordered = [...frames];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    setFrames(reordered);
+
+    setCurrentFrameIndex(prev => {
+      if (prev === fromIndex) return toIndex;
+      if (fromIndex < toIndex && prev > fromIndex && prev <= toIndex) return prev - 1;
+      if (fromIndex > toIndex && prev >= toIndex && prev < fromIndex) return prev + 1;
+      return prev;
+    });
+
+    setPreviewFrameIndex(prev => {
+      if (prev === fromIndex) return toIndex;
+      if (fromIndex < toIndex && prev > fromIndex && prev <= toIndex) return prev - 1;
+      if (fromIndex > toIndex && prev >= toIndex && prev < fromIndex) return prev + 1;
+      return prev;
+    });
+  };
+
   const nudgeSelection = (dx: number, dy: number) => {
     if (!selection?.active) return;
     playNudgeSound();
@@ -2662,9 +2704,7 @@ export default function App() {
           <div className="w-full md:w-auto flex flex-col gap-2 md:gap-1 md:pr-4 md:border-r md:border-zinc-900">
           <div className="flex flex-wrap gap-2">
             <button 
-              onClick={() => {
-                setIsPlaying(prev => !prev);
-              }}
+              onClick={handlePlaybackToggle}
               className={`p-2 rounded-lg transition-all ${isPlaying ? 'bg-red-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
             >
               {isPlaying ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
@@ -2730,7 +2770,7 @@ export default function App() {
               <span className="text-[8px] font-bold text-zinc-600">FPS</span>
               <input 
                 type="range" min="1" max="24" step="1" value={fps} 
-                onChange={(e) => setFps(parseInt(e.target.value))}
+                onChange={(e) => handleFpsChange(Number(e.target.value))}
                 onPointerDown={(e) => e.stopPropagation()}
                 onTouchStart={(e) => e.stopPropagation()}
                 className="w-24 h-2 accent-purple-500 cursor-pointer touch-none"
@@ -2783,10 +2823,7 @@ export default function App() {
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          const newFrames = [...frames];
-                          [newFrames[i-1], newFrames[i]] = [newFrames[i], newFrames[i-1]];
-                          setFrames(newFrames);
-                          setCurrentFrameIndex(i-1);
+                          moveFrame(i, i - 1);
                         }}
                         className="p-1 hover:bg-white/20 rounded"
                       >
@@ -2808,10 +2845,7 @@ export default function App() {
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          const newFrames = [...frames];
-                          [newFrames[i], newFrames[i+1]] = [newFrames[i+1], newFrames[i]];
-                          setFrames(newFrames);
-                          setCurrentFrameIndex(i+1);
+                          moveFrame(i, i + 1);
                         }}
                         className="p-1 hover:bg-white/20 rounded"
                       >
