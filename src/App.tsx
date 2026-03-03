@@ -308,6 +308,7 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
 
 export default function App() {
   type ExportFormat = 'png' | 'gif' | 'sprite-sheet' | 'jpeg' | 'print' | 'palette';
+  type HistoryEntry = { frameIndex: number; pixels: string[] };
 
   // Navigation & UI State
   const [activeTab, setActiveTab] = useState<'create' | 'studio' | 'closet' | 'challenges' | 'profile'>('create');
@@ -324,7 +325,7 @@ export default function App() {
   const [palette, setPalette] = useState<string[]>(STARTER_PALETTE);
   const [tool, setTool] = useState<'pencil' | 'eraser' | 'fill' | 'picker' | 'select'>('pencil');
   const [projectName, setProjectName] = useState('New Identity');
-  const [history, setHistory] = useState<string[][]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [mirrorMode, setMirrorMode] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -367,6 +368,7 @@ export default function App() {
   const frameNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const studioNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const achievementTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyIndexRef = useRef(-1);
   const framesRef = useRef<Frame[]>(frames);
   const strokeDraftRef = useRef<string[] | null>(null);
   const strokeFrameIndexRef = useRef<number | null>(null);
@@ -397,6 +399,10 @@ export default function App() {
   useEffect(() => {
     framesRef.current = frames;
   }, [frames]);
+
+  useEffect(() => {
+    historyIndexRef.current = historyIndex;
+  }, [historyIndex]);
 
   useEffect(() => {
     return () => {
@@ -506,6 +512,9 @@ export default function App() {
   const addStudioFeedEntry = (entry: string) => {
     setStudioFeed(prev => [entry, ...prev].slice(0, MAX_STUDIO_FEED_ENTRIES));
   };
+
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex >= 0 && historyIndex < history.length - 1;
 
   const handleTravel = (destinationId: string) => {
     const destination = STUDIO_DESTINATIONS.find(dest => dest.id === destinationId);
@@ -859,33 +868,64 @@ export default function App() {
   // Editor Handlers
   const isTeenMode = (stats?.level || 1) >= 10;
 
-  const saveToHistory = (pixels: string[]) => {
-    const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push([...pixels]);
-    if (newHistory.length > 50) newHistory.shift();
-    setHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
+  const saveToHistory = (pixels: string[], frameIndex: number = currentFrameIndex) => {
+    setHistory(prev => {
+      const trimmed = prev.slice(0, historyIndexRef.current + 1);
+      const nextEntry: HistoryEntry = { frameIndex, pixels: [...pixels] };
+      const lastEntry = trimmed[trimmed.length - 1];
+      if (lastEntry && lastEntry.frameIndex === nextEntry.frameIndex && lastEntry.pixels.join('|') === nextEntry.pixels.join('|')) {
+        const idx = trimmed.length - 1;
+        historyIndexRef.current = idx;
+        setHistoryIndex(idx);
+        return trimmed;
+      }
+      const appended = [...trimmed, nextEntry];
+      if (appended.length > 50) {
+        appended.shift();
+      }
+      const idx = appended.length - 1;
+      historyIndexRef.current = idx;
+      setHistoryIndex(idx);
+      return appended;
+    });
   };
 
   const undo = () => {
-    if (historyIndex > 0) {
-      const prevPixels = history[historyIndex - 1];
-      const newFrames = [...frames];
-      newFrames[currentFrameIndex] = { ...newFrames[currentFrameIndex], pixels: [...prevPixels] };
-      setFrames(newFrames);
-      setHistoryIndex(historyIndex - 1);
-    }
+    if (!canUndo) return;
+    const prevEntry = history[historyIndex - 1];
+    if (!prevEntry) return;
+    setFrames(prev => {
+      if (!prev[prevEntry.frameIndex]) return prev;
+      const next = [...prev];
+      next[prevEntry.frameIndex] = { ...next[prevEntry.frameIndex], pixels: [...prevEntry.pixels] };
+      return next;
+    });
+    setCurrentFrameIndex(prevEntry.frameIndex);
+    setPreviewFrameIndex(prevEntry.frameIndex);
+    setHistoryIndex(historyIndex - 1);
   };
 
   const redo = () => {
-    if (historyIndex < history.length - 1) {
-      const nextPixels = history[historyIndex + 1];
-      const newFrames = [...frames];
-      newFrames[currentFrameIndex] = { ...newFrames[currentFrameIndex], pixels: [...nextPixels] };
-      setFrames(newFrames);
-      setHistoryIndex(historyIndex + 1);
-    }
+    if (!canRedo) return;
+    const nextEntry = history[historyIndex + 1];
+    if (!nextEntry) return;
+    setFrames(prev => {
+      if (!prev[nextEntry.frameIndex]) return prev;
+      const next = [...prev];
+      next[nextEntry.frameIndex] = { ...next[nextEntry.frameIndex], pixels: [...nextEntry.pixels] };
+      return next;
+    });
+    setCurrentFrameIndex(nextEntry.frameIndex);
+    setPreviewFrameIndex(nextEntry.frameIndex);
+    setHistoryIndex(historyIndex + 1);
   };
+
+  useEffect(() => {
+    if (history.length > 0) return;
+    const frame = frames[currentFrameIndex];
+    if (!frame) return;
+    saveToHistory(frame.pixels, currentFrameIndex);
+  }, [frames, currentFrameIndex, history.length]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -2463,8 +2503,8 @@ export default function App() {
           <ToolButton active={tool === 'picker'} onClick={() => setTool('picker')} icon={<Pipette className="w-5 h-5" />} label="Picker" />
           <ToolButton active={tool === 'select'} onClick={() => setTool('select')} icon={<Square className="w-5 h-5" />} label="Select" />
           <div className="h-[1px] bg-zinc-800 mx-2 my-1" />
-          <ToolButton active={false} onClick={undo} icon={<Undo2 className="w-5 h-5" />} label="Undo" />
-          <ToolButton active={false} onClick={redo} icon={<Undo2 className="w-5 h-5 scale-x-[-1]" />} label="Redo" />
+          <ToolButton active={false} onClick={undo} disabled={!canUndo} icon={<Undo2 className="w-5 h-5" />} label="Undo" />
+          <ToolButton active={false} onClick={redo} disabled={!canRedo} icon={<Undo2 className="w-5 h-5 scale-x-[-1]" />} label="Redo" />
           <div className="h-[1px] bg-zinc-800 mx-2 my-1" />
           <ToolButton active={false} onClick={() => applyEffect('glow')} icon={<Sparkles className="w-5 h-5 text-yellow-500" />} label="Add Glow" />
           <ToolButton active={false} onClick={() => applyEffect('sparkle')} icon={<Star className="w-5 h-5 text-blue-400" />} label="Add Sparkles" />
@@ -3760,16 +3800,19 @@ export default function App() {
 
 // --- Helper Components ---
 
-function ToolButton({ active, onClick, icon, label }: any) {
+function ToolButton({ active, onClick, icon, label, disabled = false }: any) {
   return (
     <motion.button
-      whileHover={{ scale: 1.1 }}
-      whileTap={{ scale: 0.9 }}
+      whileHover={disabled ? undefined : { scale: 1.1 }}
+      whileTap={disabled ? undefined : { scale: 0.9 }}
       onClick={onClick}
+      disabled={disabled}
       className={`p-3 rounded-2xl transition-all relative group ${
         active 
           ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' 
-          : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+          : disabled
+            ? 'text-zinc-700 bg-zinc-900/60 cursor-not-allowed'
+            : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
       }`}
     >
       {icon}
