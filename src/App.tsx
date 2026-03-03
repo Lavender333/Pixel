@@ -85,6 +85,9 @@ const TRENDING_PALETTES = [
   { name: 'Street Mode', colors: ['#1A1A1A', '#FF4400', '#00FF00', '#FFFFFF', '#888888'] },
 ];
 
+const STUDIO_STATE_KEY = 'pixel-creator-studio-state-v1';
+const MAX_STUDIO_FEED_ENTRIES = 8;
+
 type IconComponent = React.ComponentType<{ className?: string }>;
 
 const STUDIO_DESTINATIONS: Array<{
@@ -275,6 +278,8 @@ export default function App() {
   const [studioFeed, setStudioFeed] = useState<string[]>(['Studio synced • Ready to explore.']);
   const [dailyTasks, setDailyTasks] = useState<StudioTask[]>(() => DAILY_STUDIO_TASKS.map(task => ({ ...task, claimed: false })));
   const [studioNotice, setStudioNotice] = useState<string | null>(null);
+  const [xpEarnedToday, setXpEarnedToday] = useState(0);
+  const [lastTaskDate, setLastTaskDate] = useState<string | null>(null);
 
   // Sound System
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -343,7 +348,7 @@ export default function App() {
   };
 
   const addStudioFeedEntry = (entry: string) => {
-    setStudioFeed(prev => [entry, ...prev].slice(0, 6));
+    setStudioFeed(prev => [entry, ...prev].slice(0, MAX_STUDIO_FEED_ENTRIES));
   };
 
   const handleTravel = (destinationId: string) => {
@@ -374,23 +379,39 @@ export default function App() {
     playAchievementSound();
   };
 
-  const handleClaimTask = (taskId: string) => {
-    const task = dailyTasks.find(item => item.id === taskId);
-    if (!task) return;
-    if (task.claimed) {
-      showStudioNotice('Task already claimed');
-      return;
-    }
-    setDailyTasks(prev => prev.map(item => item.id === taskId ? { ...item, claimed: true } : item));
+  const applyTaskReward = (task: StudioTask, contextMessage?: string) => {
     setCoins(prev => prev + task.rewardCoins);
     setGems(prev => prev + task.rewardGems);
     const rewardParts = [`+${task.rewardCoins} coins`];
     if (task.rewardGems) {
       rewardParts.push(`+${task.rewardGems} gems`);
     }
-    addStudioFeedEntry(`${task.label} • ${rewardParts.join(' ')}`);
-    showStudioNotice(rewardParts.join(' '));
+    const rewardSummary = rewardParts.join(' ');
+    const feedSummary = `${task.label} • ${rewardSummary}${contextMessage ? ` • ${contextMessage}` : ''}`;
+    addStudioFeedEntry(feedSummary);
+    showStudioNotice(`${task.label} complete • ${rewardSummary}`);
     playAchievementSound();
+  };
+
+  const completeStudioTask = (taskId: string, contextMessage?: string) => {
+    let rewardTask: StudioTask | null = null;
+    setDailyTasks(prev => {
+      const existing = prev.find(item => item.id === taskId);
+      if (!existing || existing.claimed) return prev;
+      rewardTask = existing;
+      return prev.map(item => item.id === taskId ? { ...item, claimed: true } : item);
+    });
+    if (rewardTask) {
+      applyTaskReward(rewardTask, contextMessage);
+      return true;
+    }
+    return false;
+  };
+
+  const handleClaimTask = (taskId: string) => {
+    if (!completeStudioTask(taskId)) {
+      showStudioNotice('Task already claimed');
+    }
   };
 
   const travelToStudio = (destinationId: string) => {
@@ -414,6 +435,13 @@ export default function App() {
     const newLevel = xpToLevel(newXp);
     
     setXp(newXp);
+    setXpEarnedToday(prev => {
+      const updated = prev + amount;
+      if (prev < 50 && updated >= 50) {
+        completeStudioTask('earn-xp', 'Daily XP target met');
+      }
+      return updated;
+    });
     if (newLevel > level) {
       setLevel(newLevel);
       unlockAchievement(`Reached Level ${newLevel}!`);
@@ -499,6 +527,53 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem(STUDIO_STATE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (typeof parsed.coins === 'number') setCoins(parsed.coins);
+      if (typeof parsed.gems === 'number') setGems(parsed.gems);
+      if (Array.isArray(parsed.ownedPlugins)) setOwnedPlugins(parsed.ownedPlugins);
+      if (Array.isArray(parsed.studioFeed) && parsed.studioFeed.length > 0) {
+        setStudioFeed(parsed.studioFeed.slice(0, MAX_STUDIO_FEED_ENTRIES));
+      }
+      if (Array.isArray(parsed.dailyTasks)) {
+        setDailyTasks(DAILY_STUDIO_TASKS.map(task => {
+          const saved = parsed.dailyTasks.find((item: any) => item.id === task.id);
+          return { ...task, claimed: Boolean(saved?.claimed) };
+        }));
+      }
+      if (typeof parsed.xpEarnedToday === 'number') {
+        setXpEarnedToday(parsed.xpEarnedToday);
+      }
+      if (typeof parsed.lastTaskDate === 'string') {
+        setLastTaskDate(parsed.lastTaskDate);
+      }
+    } catch (error) {
+      console.warn('Failed to load studio state', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const payload = {
+      coins,
+      gems,
+      ownedPlugins,
+      studioFeed,
+      dailyTasks: dailyTasks.map(task => ({ id: task.id, claimed: task.claimed })),
+      xpEarnedToday,
+      lastTaskDate,
+    };
+    try {
+      localStorage.setItem(STUDIO_STATE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn('Failed to persist studio state', error);
+    }
+  }, [coins, gems, ownedPlugins, studioFeed, dailyTasks, xpEarnedToday]);
+
+  useEffect(() => {
     if (activeTab !== 'studio' && studioNotice) {
       if (studioNoticeTimeout.current) {
         clearTimeout(studioNoticeTimeout.current);
@@ -507,6 +582,16 @@ export default function App() {
       setStudioNotice(null);
     }
   }, [activeTab]);
+
+  // daily reset for tasks/xp
+  useEffect(() => {
+    const today = new Date().toDateString();
+    if (lastTaskDate !== today) {
+      setLastTaskDate(today);
+      setXpEarnedToday(0);
+      setDailyTasks(prev => prev.map(task => ({ ...task, claimed: false })));
+    }
+  }, [lastTaskDate]);
   useEffect(() => {
     fetchData();
     const interval = setInterval(autoSave, 5000);
@@ -682,7 +767,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, selection?.active, nudgeSelection, clearSelection]);
+}, [undo, redo, selection?.active]);
 
   const updateFrame = (pixels: string[]) => {
     const newFrames = [...frames];
@@ -960,10 +1045,10 @@ export default function App() {
         };
 
         // Ears
-        [[4, 0, '#C06020'], [5, 0, '#FF9A50'], [6, 0, '#C06020'], [12, 0, '#C06020'], [13, 0, '#FF9A50'], [14, 0, '#C06020']].forEach(([x, y, c]) => {
+        [[4, 0, '#C06020'], [5, 0, '#FF9A50'], [6, 0, '#C06020'], [12, 0, '#C06020'], [13, 0, '#FF9A50'], [14, 0, '#C06020']].forEach(([x, y, c]: [number, number, string]) => {
           drawPixel(o + x, o + y + bob, c);
         });
-        [[5, 1, '#FF9A50'], [13, 1, '#FF9A50']].forEach(([x, y, c]) => {
+        [[5, 1, '#FF9A50'], [13, 1, '#FF9A50']].forEach(([x, y, c]: [number, number, string]) => {
           drawPixel(o + x, o + y + bob, c);
         });
 
@@ -976,10 +1061,10 @@ export default function App() {
         }
 
         // Face
-        [[6, 3, '#111'], [6, 4, '#1a88FF'], [7, 3, '#99BBFF'], [11, 3, '#111'], [11, 4, '#1a88FF'], [12, 3, '#99BBFF']].forEach(([x, y, c]) => {
+        [[6, 3, '#111'], [6, 4, '#1a88FF'], [7, 3, '#99BBFF'], [11, 3, '#111'], [11, 4, '#1a88FF'], [12, 3, '#99BBFF']].forEach(([x, y, c]: [number, number, string]) => {
           drawPixel(o + x, o + y + bob, c);
         });
-        [[9, 6, '#FF6090'], [9, 7, '#FF4070']].forEach(([x, y, c]) => {
+        [[9, 6, '#FF6090'], [9, 7, '#FF4070']].forEach(([x, y, c]: [number, number, string]) => {
           drawPixel(o + x, o + y + bob, c);
         });
 
@@ -1008,7 +1093,7 @@ export default function App() {
 
         // Tail
         const ty = [[-1, 0], [-2, 0], [-2, -1], [-1, -1]][f];
-        [[14 + ty[0], 13, '#FF9A50'], [15 + ty[0], 12, '#FF9A50'], [16, 11 + ty[1], '#FFAA60'], [17, 10 + ty[1], '#C06020']].forEach(([x, y, c]) => {
+        [[14 + ty[0], 13, '#FF9A50'], [15 + ty[0], 12, '#FF9A50'], [16, 11 + ty[1], '#FFAA60'], [17, 10 + ty[1], '#C06020']].forEach(([x, y, c]: [number, number, string]) => {
           if (x < gridSize) drawPixel(o + x, o + y, c);
         });
 
@@ -1509,6 +1594,7 @@ export default function App() {
     link.download = `${projectName}.png`;
     link.href = canvas.toDataURL();
     link.click();
+    completeStudioTask('share-loop', 'Loop exported');
   };
 
   const saveProject = async () => {
@@ -1562,6 +1648,7 @@ export default function App() {
     setShowTemplates(false);
     setOnboarding(false);
     saveToHistory(emptyPixels);
+    completeStudioTask('unlock-template', 'Template applied');
   };
 
   const canAddMoreFrames = frames.length < MAX_FRAMES;

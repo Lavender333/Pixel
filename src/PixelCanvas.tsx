@@ -314,7 +314,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     const useSize = tool === 'eraser' ? eraserSize : brushSize;
     const color = tool === 'eraser' ? 'transparent' : selectedColor;
     drawBrush(x, y, color, useSize);
-  }, [tool, selection.active, getSelectionRect, liftSelection, stampFloat, resetSelection, drawSelectionOverlay, frames, currentFrameIndex, gridSize, onColorPick, selectedColor, floodFill, commitStroke, brushSize, eraserSize, drawBrush]);
+}, [tool, selection.active, getSelectionRect, liftSelection, stampFloat, resetSelection, drawSelectionOverlay, frames, currentFrameIndex, gridSize, onColorPick, selectedColor, commitStroke, brushSize, eraserSize, drawBrush]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const { x, y } = getCanvasCoords(e.clientX, e.clientY);
@@ -404,7 +404,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   const handleTouchStart = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     if (e.touches.length === 2) {
-      const [t1, t2] = Array.from(e.touches);
+      const [t1, t2] = Array.from(e.touches) as [Touch, Touch];
       setPinchDistance(Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY));
       return;
     }
