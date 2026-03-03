@@ -2607,7 +2607,7 @@ export default function App() {
         </AnimatePresence>
 
         {/* Floating Tool Panel */}
-        <div className="fixed md:absolute right-2 md:right-4 top-20 md:top-4 bottom-24 md:bottom-4 flex flex-col gap-2 bg-zinc-900/85 backdrop-blur-xl p-2 rounded-3xl border border-zinc-800 shadow-2xl overflow-y-auto scrollbar-hide z-50 max-h-[calc(100dvh-9rem)] md:max-h-[calc(100%-2rem)] pointer-events-auto">
+        <div className="fixed md:absolute right-1.5 md:right-4 top-20 md:top-4 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] md:bottom-4 w-[4.25rem] md:w-auto flex flex-col gap-2 bg-zinc-900/85 backdrop-blur-xl p-2 rounded-3xl border border-zinc-800 shadow-2xl overflow-y-auto scrollbar-hide z-50 max-h-[calc(100dvh-10.5rem-env(safe-area-inset-bottom))] md:max-h-[calc(100%-2rem)] pointer-events-auto">
           <div className="md:hidden sticky top-0 z-20 self-end relative">
             <button
               onClick={() => setShowMobileQuickColor(prev => !prev)}
@@ -3989,7 +3989,7 @@ function ToolButton({ active, onClick, icon, label, disabled = false }: any) {
       whileTap={disabled ? undefined : { scale: 0.9 }}
       onClick={onClick}
       disabled={disabled}
-      className={`p-3 rounded-2xl transition-all relative group ${
+      className={`p-2.5 md:p-3 rounded-2xl transition-all relative group ${
         active 
           ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' 
           : disabled
