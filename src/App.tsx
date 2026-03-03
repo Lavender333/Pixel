@@ -57,6 +57,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { PixelSpriteAudio } from './PixelSpriteAudio';
+import { initAnalytics, trackEvent } from './analytics';
 import { TEMPLATE_DEFINITIONS, buildColorableMask, getTemplateLockMask, getTemplatePixels, TemplateCategory, TemplateDefinition } from './templateData';
 import { Frame, Project, ProjectData, UserStats, Challenge, Submission } from './types';
 import { PixelCanvas, PixelCanvasHandle } from './PixelCanvas';
@@ -456,6 +457,13 @@ export default function App() {
 
   useEffect(() => {
     audioEngineRef.current = new PixelSpriteAudio();
+  }, []);
+
+  useEffect(() => {
+    if (!initAnalytics()) return;
+    trackEvent('app_opened', {
+      canvas_size: gridSize,
+    });
   }, []);
 
   useEffect(() => {
@@ -1194,7 +1202,12 @@ export default function App() {
       return;
     }
     setShowPreview(true);
-    setIsPlaying(prev => !prev);
+    const nextIsPlaying = !isPlaying;
+    setIsPlaying(nextIsPlaying);
+    trackEvent(nextIsPlaying ? 'animation_played' : 'animation_paused', {
+      frame_count: frames.length,
+      fps,
+    });
   };
 
   const handleFpsChange = (value: number) => {
@@ -1819,6 +1832,11 @@ export default function App() {
     setShowAnimationTools(false);
     addXp(5, 'animation');
     updateStreak();
+    trackEvent('animation_preset_applied', {
+      preset,
+      frame_count: newFrames.length,
+      canvas_size: gridSize,
+    });
   };
 
   const applyEffect = (effect: 'glow' | 'sparkle' | 'outline' | 'remix') => {
@@ -2009,6 +2027,7 @@ export default function App() {
       downloadDataUrl(`${safeName}.png`, canvas.toDataURL('image/png'));
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('export_completed', { format: 'png', frame_count: frames.length });
       return;
     }
 
@@ -2018,6 +2037,8 @@ export default function App() {
       downloadDataUrl(`${safeName}.jpg`, canvas.toDataURL('image/jpeg', 0.92));
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('export_completed', { format: 'jpeg', frame_count: frames.length });
+      trackEvent('share_intent', { channel: 'jpeg_export' });
       return;
     }
 
@@ -2055,11 +2076,13 @@ export default function App() {
       if (format === 'gif') {
         showFrameNotice('Animated GIF exports as sprite sheet PNG for now');
         downloadDataUrl(`${safeName}-animated.png`, canvas.toDataURL('image/png'));
+        trackEvent('share_intent', { channel: 'gif_export_fallback' });
       } else {
         downloadDataUrl(`${safeName}-sheet.png`, canvas.toDataURL('image/png'));
       }
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('export_completed', { format, frame_count: frames.length });
       return;
     }
 
@@ -2090,6 +2113,7 @@ export default function App() {
       downloadDataUrl(`${safeName}-print.png`, printCanvas.toDataURL('image/png'));
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('export_completed', { format: 'print', frame_count: frames.length });
       return;
     }
 
@@ -2102,6 +2126,7 @@ export default function App() {
       downloadTextFile(`${safeName}-palette.json`, JSON.stringify(paletteData, null, 2), 'application/json');
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
+      trackEvent('export_completed', { format: 'palette', color_count: palette.length });
       return;
     }
   };
@@ -2128,6 +2153,10 @@ export default function App() {
       playSaveSound();
       addXp(10, 'save');
       updateStreak();
+      trackEvent('project_saved', {
+        grid_size: gridSize,
+        frame_count: frames.length,
+      });
       confetti({
         particleCount: 150,
         spread: 70,
@@ -2170,6 +2199,11 @@ export default function App() {
     setShowTemplates(false);
     setOnboarding(false);
     saveToHistory(emptyPixels);
+    trackEvent('template_started', {
+      template_id: template.id,
+      template_kind: template.kind,
+      canvas_size: template.size,
+    });
   };
 
   const canAddMoreFrames = frames.length < MAX_FRAMES;
@@ -2252,7 +2286,13 @@ export default function App() {
         <h1 className="text-4xl font-display italic text-white mb-4 tracking-tighter">Create Your Pixels and Spirites</h1>
         <p className="text-zinc-500 mb-12">Create. Customize. Share.</p>
         
-        <Button onClick={() => setShowTemplates(true)} className="w-full py-4 text-lg">
+        <Button
+          onClick={() => {
+            setShowTemplates(true);
+            trackEvent('template_picker_opened');
+          }}
+          className="w-full py-4 text-lg"
+        >
           Start Creating
         </Button>
       </motion.div>
