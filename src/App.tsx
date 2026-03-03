@@ -2495,9 +2495,9 @@ export default function App() {
       </div>
 
       {/* Animation Bar */}
-      <div className="relative h-28 border-t border-zinc-900 bg-zinc-950 flex items-center px-6 gap-4 overflow-x-auto scrollbar-hide flex-shrink-0">
-          <div className="flex flex-col gap-1 pr-4 border-r border-zinc-900">
-          <div className="flex gap-2">
+        <div className="relative border-t border-zinc-900 bg-zinc-950 flex flex-col md:flex-row md:items-center px-3 md:px-6 py-3 md:py-2 gap-3 md:gap-4 flex-shrink-0">
+          <div className="w-full md:w-auto flex flex-col gap-2 md:gap-1 md:pr-4 md:border-r md:border-zinc-900">
+          <div className="flex flex-wrap gap-2">
             <button 
               onClick={() => {
                 setIsPlaying(prev => !prev);
@@ -2558,7 +2558,7 @@ export default function App() {
             </div>
             <button 
               onClick={() => travelToStudio('motion-lab')}
-              className="mt-2 flex items-center gap-2 px-3 py-1 rounded-xl border border-zinc-800 text-[8px] font-bold uppercase tracking-widest text-zinc-400 hover:text-white hover:border-purple-500 transition-all"
+              className="flex items-center gap-2 px-3 py-1 rounded-xl border border-zinc-800 text-[8px] font-bold uppercase tracking-widest text-zinc-400 hover:text-white hover:border-purple-500 transition-all"
             >
               <Gamepad2 className="w-3 h-3" /> Visit Motion Lab
             </button>
@@ -2576,6 +2576,7 @@ export default function App() {
             </div>
           </div>
 
+          <div className="w-full flex items-start gap-3 overflow-x-auto scrollbar-hide pb-1">
           <div className="flex flex-col items-center gap-1 flex-shrink-0">
             <button 
               onClick={handleAddFrame}
@@ -2601,7 +2602,7 @@ export default function App() {
               >
                 <div 
                   onClick={() => setCurrentFrameIndex(i)}
-                  className={`w-14 h-14 rounded-xl border-2 overflow-hidden cursor-pointer transition-all relative group ${currentFrameIndex === i ? 'border-purple-500 scale-105' : 'border-zinc-900'}`}
+                  className={`w-16 h-16 md:w-14 md:h-14 rounded-xl border-2 overflow-hidden cursor-pointer transition-all relative group ${currentFrameIndex === i ? 'border-purple-500 scale-105' : 'border-zinc-900'}`}
                 >
                   <div className="grid w-full h-full pixel-grid" style={{ gridTemplateColumns: `repeat(${gridSize}, 1fr)` }}>
                     {f.pixels.map((c, pi) => {
@@ -2709,6 +2710,7 @@ export default function App() {
                 </div>
               </div>
             ))}
+          </div>
           </div>
           <AnimatePresence>
             {frameNotice && (
