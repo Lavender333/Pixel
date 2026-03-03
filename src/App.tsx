@@ -342,6 +342,48 @@ export default function App() {
   const pixelCanvasRef = useRef<PixelCanvasHandle | null>(null);
   const frameNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const studioNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const framesRef = useRef<Frame[]>(frames);
+  const strokeDraftRef = useRef<string[] | null>(null);
+  const strokeFrameIndexRef = useRef<number | null>(null);
+  const paintRafRef = useRef<number | null>(null);
+
+  const flushDraftToState = useCallback(() => {
+    if (!strokeDraftRef.current || strokeFrameIndexRef.current === null) return;
+    const draft = [...strokeDraftRef.current];
+    const targetFrameIndex = strokeFrameIndexRef.current;
+    setFrames(prev => {
+      if (!prev[targetFrameIndex]) return prev;
+      const next = [...prev];
+      next[targetFrameIndex] = { ...next[targetFrameIndex], pixels: draft };
+      return next;
+    });
+    paintRafRef.current = null;
+  }, []);
+
+  const resetStrokeDraft = useCallback(() => {
+    if (paintRafRef.current !== null) {
+      cancelAnimationFrame(paintRafRef.current);
+      paintRafRef.current = null;
+    }
+    strokeDraftRef.current = null;
+    strokeFrameIndexRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    framesRef.current = frames;
+  }, [frames]);
+
+  useEffect(() => {
+    return () => {
+      if (paintRafRef.current !== null) {
+        cancelAnimationFrame(paintRafRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    resetStrokeDraft();
+  }, [currentFrameIndex, resetStrokeDraft]);
 
   const initAudioContext = () => {
     if (!audioContextRef.current) {
@@ -868,25 +910,39 @@ export default function App() {
 
   const handlePixelChange = useCallback((x: number, y: number, color: string) => {
     if (isLockedPixel(x, y)) return null;
-    let updatedPixels: string[] | null = null;
-    setFrames(prev => {
-      const next = [...prev];
-      const frame = next[currentFrameIndex];
-      if (!frame) return prev;
-      const idx = y * gridSize + x;
-      const normalized = color === 'transparent' ? 'transparent' : color;
-      if (frame.pixels[idx] === normalized) return prev;
-      const pixels = [...frame.pixels];
-      pixels[idx] = normalized;
-      next[currentFrameIndex] = { ...frame, pixels };
-      updatedPixels = pixels;
-      return next;
-    });
-    return updatedPixels;
-  }, [currentFrameIndex, gridSize, isLockedPixel]);
+    const idx = y * gridSize + x;
+    const normalized = color === 'transparent' ? 'transparent' : color;
+
+    if (!strokeDraftRef.current || strokeFrameIndexRef.current !== currentFrameIndex) {
+      const sourceFrame = framesRef.current[currentFrameIndex];
+      if (!sourceFrame) return null;
+      strokeDraftRef.current = [...sourceFrame.pixels];
+      strokeFrameIndexRef.current = currentFrameIndex;
+    }
+
+    const draft = strokeDraftRef.current;
+    if (!draft) return null;
+    if (draft[idx] === normalized) return draft;
+
+    draft[idx] = normalized;
+
+    if (paintRafRef.current === null) {
+      paintRafRef.current = requestAnimationFrame(() => {
+        flushDraftToState();
+      });
+    }
+
+    return draft;
+  }, [currentFrameIndex, gridSize, isLockedPixel, flushDraftToState]);
 
   const handleStrokeComplete = (pixels: string[] | null, action: 'draw' | 'erase' | 'fill') => {
-    if (!pixels) return;
+    if (strokeDraftRef.current && strokeFrameIndexRef.current === currentFrameIndex) {
+      flushDraftToState();
+    }
+    if (!pixels) {
+      resetStrokeDraft();
+      return;
+    }
     saveToHistory(pixels);
     updateStreak();
     if (action === 'draw') {
@@ -900,6 +956,7 @@ export default function App() {
       addXp(2, 'fill');
     }
     checkTemplateCompletion(pixels);
+    resetStrokeDraft();
   };
 
   const handleColorPick = (color: string) => {
