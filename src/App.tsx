@@ -58,6 +58,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { PixelSpriteAudio } from './PixelSpriteAudio';
 import { initAnalytics, trackEvent } from './analytics';
+import { ExportEngine, ToolEngine } from './core';
 import { TEMPLATE_DEFINITIONS, buildColorableMask, getTemplateLockMask, getTemplatePixels, TemplateCategory, TemplateDefinition } from './templateData';
 import { Frame, Project, ProjectData, UserStats, Challenge, Submission } from './types';
 import { PixelCanvas, PixelCanvasHandle } from './PixelCanvas';
@@ -1890,35 +1891,13 @@ export default function App() {
     }
 
     if (effect === 'outline') {
-      // Create a temporary array to track which pixels should be outlined
-      const outlinePixels = new Set<number>();
-      
-      currentPixels.forEach((color, i) => {
-        if (color !== 'transparent') {
-          const x = i % gridSize;
-          const y = Math.floor(i / gridSize);
-          
-          // Check all 8 neighbors
-          const neighbors = [
-            { nx: x - 1, ny: y - 1 }, { nx: x, ny: y - 1 }, { nx: x + 1, ny: y - 1 },
-            { nx: x - 1, ny: y },                         { nx: x + 1, ny: y },
-            { nx: x - 1, ny: y + 1 }, { nx: x, ny: y + 1 }, { nx: x + 1, ny: y + 1 }
-          ];
-          
-          neighbors.forEach(({ nx, ny }) => {
-            if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
-              const nIdx = ny * gridSize + nx;
-              if (currentPixels[nIdx] === 'transparent') {
-                outlinePixels.add(nIdx);
-              }
-            }
-          });
-        }
-      });
-      
-      // Apply black outline
-      outlinePixels.forEach(idx => {
-        newPixels[idx] = '#000000';
+      const { paletteEntries, registerColor } = buildCorePaletteIndex([currentPixels, ['#000000']]);
+      const durationMs = Math.round((1000 / Math.max(1, fps)) * (frames[currentFrameIndex].duration ?? 1));
+      const coreFrame = colorsToCoreFrame(frames[currentFrameIndex].id, currentPixels, durationMs, registerColor);
+      const outlined = ToolEngine.outline(coreFrame, registerColor('#000000'), 0);
+      const outlinedPixels = corePixelsToColors(outlined, paletteEntries);
+      outlinedPixels.forEach((color, index) => {
+        newPixels[index] = color;
       });
     }
 
@@ -1976,11 +1955,56 @@ export default function App() {
     setPalette(palette.filter(c => c !== color));
   };
 
+  const buildCorePaletteIndex = (colorSets: string[][]) => {
+    const paletteEntries: Array<{ hex: string }> = [{ hex: '#00000000' }];
+    const colorToIndex = new Map<string, number>();
+
+    const registerColor = (color: string): number => {
+      if (color === 'transparent') return 0;
+      const existing = colorToIndex.get(color);
+      if (existing !== undefined) return existing;
+      const nextIndex = paletteEntries.length;
+      paletteEntries.push({ hex: color });
+      colorToIndex.set(color, nextIndex);
+      return nextIndex;
+    };
+
+    colorSets.forEach(colors => colors.forEach(registerColor));
+
+    return { paletteEntries, registerColor };
+  };
+
+  const colorsToCoreFrame = (frameId: string, colors: string[], durationMs: number, registerColor: (color: string) => number) => {
+    return {
+      id: frameId,
+      width: gridSize,
+      height: gridSize,
+      durationMs,
+      pixels: Uint16Array.from(colors.map(registerColor)),
+    };
+  };
+
+  const corePixelsToColors = (pixels: Uint16Array, paletteEntries: Array<{ hex: string }>) => {
+    return Array.from(pixels, (paletteIndex) => {
+      if (paletteIndex === 0) return 'transparent';
+      return paletteEntries[paletteIndex]?.hex ?? 'transparent';
+    });
+  };
+
   const downloadDataUrl = (filename: string, dataUrl: string) => {
     const link = document.createElement('a');
     link.download = filename;
     link.href = dataUrl;
     link.click();
+  };
+
+  const downloadBlob = (filename: string, blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = url;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const downloadTextFile = (filename: string, content: string, mimeType: string = 'text/plain') => {
@@ -2025,16 +2049,19 @@ export default function App() {
     return canvas;
   };
 
-  const exportAs = (format: ExportFormat) => {
+  const exportAs = async (format: ExportFormat) => {
     const activeFrame = frames[currentFrameIndex];
     if (!activeFrame) return;
 
     const safeName = projectName.trim().replace(/\s+/g, '-').toLowerCase() || 'pixel-sprite';
 
     if (format === 'png') {
-      const canvas = renderFrameCanvas(activeFrame, 20);
-      if (!canvas) return;
-      downloadDataUrl(`${safeName}.png`, canvas.toDataURL('image/png'));
+      const displayColors = activeFrame.pixels.map((_, i) => getFrameDisplayColor(activeFrame, i));
+      const { paletteEntries, registerColor } = buildCorePaletteIndex([displayColors]);
+      const durationMs = Math.round((1000 / Math.max(1, fps)) * (activeFrame.duration ?? 1));
+      const coreFrame = colorsToCoreFrame(activeFrame.id, displayColors, durationMs, registerColor);
+      const blob = await ExportEngine.exportPng(coreFrame, paletteEntries, 20);
+      downloadBlob(`${safeName}.png`, blob);
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
       trackEvent('sprite_exported', { event_category: 'creation', format: 'png' });
@@ -2056,43 +2083,27 @@ export default function App() {
     }
 
     if (format === 'sprite-sheet' || format === 'gif') {
-      const frameScale = 12;
       const columns = Math.min(8, Math.max(1, Math.ceil(Math.sqrt(frames.length))));
-      const rows = Math.max(1, Math.ceil(frames.length / columns));
       const padding = 2;
-      const cellSize = gridSize * frameScale;
-      const canvas = document.createElement('canvas');
-      canvas.width = columns * cellSize + (columns + 1) * padding;
-      canvas.height = rows * cellSize + (rows + 1) * padding;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.imageSmoothingEnabled = false;
-      ctx.fillStyle = '#00000000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      frames.forEach((frame, index) => {
-        const col = index % columns;
-        const row = Math.floor(index / columns);
-        const offsetX = padding + col * (cellSize + padding);
-        const offsetY = padding + row * (cellSize + padding);
-
-        for (let pixelIndex = 0; pixelIndex < frame.pixels.length; pixelIndex++) {
-          const displayColor = getFrameDisplayColor(frame, pixelIndex);
-          if (displayColor === 'transparent') continue;
-          const x = offsetX + (pixelIndex % gridSize) * frameScale;
-          const y = offsetY + Math.floor(pixelIndex / gridSize) * frameScale;
-          ctx.fillStyle = displayColor;
-          ctx.fillRect(x, y, frameScale, frameScale);
-        }
+      const displayColorSets = frames.map(frame => frame.pixels.map((_, pixelIndex) => getFrameDisplayColor(frame, pixelIndex)));
+      const { paletteEntries, registerColor } = buildCorePaletteIndex(displayColorSets);
+      const coreFrames = frames.map((frame, index) => {
+        const durationMs = Math.round((1000 / Math.max(1, fps)) * (frame.duration ?? 1));
+        return colorsToCoreFrame(frame.id, displayColorSets[index], durationMs, registerColor);
+      });
+      const spriteSheet = await ExportEngine.exportSpriteSheet(coreFrames, paletteEntries, {
+        columns,
+        padding,
+        scale: 12,
       });
 
       if (format === 'gif') {
         showFrameNotice('Animated GIF exports as sprite sheet PNG for now');
-        downloadDataUrl(`${safeName}-animated.png`, canvas.toDataURL('image/png'));
+        downloadBlob(`${safeName}-animated.png`, spriteSheet.blob);
         trackEvent('share_clicked', { event_category: 'growth', channel: 'gif_export_fallback' });
         trackEvent('share_intent', { channel: 'gif_export_fallback' });
       } else {
-        downloadDataUrl(`${safeName}-sheet.png`, canvas.toDataURL('image/png'));
+        downloadBlob(`${safeName}-sheet.png`, spriteSheet.blob);
       }
       audioEngineRef.current?.exportComplete();
       setShowExportMenu(false);
