@@ -366,6 +366,7 @@ export default function App() {
   const pixelCanvasRef = useRef<PixelCanvasHandle | null>(null);
   const frameNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const studioNoticeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const achievementTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const framesRef = useRef<Frame[]>(frames);
   const strokeDraftRef = useRef<string[] | null>(null);
   const strokeFrameIndexRef = useRef<number | null>(null);
@@ -585,6 +586,15 @@ export default function App() {
   const xpToLevel = (xp: number) => Math.floor(xp / 100) + 1;
   const xpForNextLevel = (level: number) => level * 100;
 
+  const dismissAchievementModal = useCallback(() => {
+    if (achievementTimeout.current) {
+      clearTimeout(achievementTimeout.current);
+      achievementTimeout.current = null;
+    }
+    setShowAchievementModal(false);
+    setCurrentAchievement(null);
+  }, []);
+
   const addXp = (amount: number, reason: string) => {
     const newXp = xp + amount;
     const newLevel = xpToLevel(newXp);
@@ -592,11 +602,15 @@ export default function App() {
     setXp(newXp);
     if (newLevel > level) {
       setLevel(newLevel);
-      unlockAchievement(`Reached Level ${newLevel}!`);
+      if (reason !== 'achievement') {
+        unlockAchievement(`Reached Level ${newLevel}!`);
+      }
     }
 
     // Check for achievement unlocks
-    checkAchievements(reason, amount);
+    if (reason !== 'achievement') {
+      checkAchievements(reason, amount);
+    }
   };
 
   const checkAchievements = (action: string, amount: number) => {
@@ -632,10 +646,12 @@ export default function App() {
       setShowAchievementModal(true);
       playAchievementSound();
       addXp(50, 'achievement');
-      
-      setTimeout(() => {
-        setShowAchievementModal(false);
-        setCurrentAchievement(null);
+
+      if (achievementTimeout.current) {
+        clearTimeout(achievementTimeout.current);
+      }
+      achievementTimeout.current = setTimeout(() => {
+        dismissAchievementModal();
       }, 3000);
     }
   };
@@ -670,6 +686,9 @@ export default function App() {
       }
       if (studioNoticeTimeout.current) {
         clearTimeout(studioNoticeTimeout.current);
+      }
+      if (achievementTimeout.current) {
+        clearTimeout(achievementTimeout.current);
       }
     };
   }, []);
@@ -3675,13 +3694,15 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200] pointer-events-none"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200]"
+            onClick={dismissAchievementModal}
           >
             <motion.div 
               initial={{ scale: 0.8, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.8, y: 20 }}
-              className="bg-gradient-to-br from-yellow-400 to-orange-500 p-6 rounded-3xl shadow-2xl max-w-sm mx-4 pointer-events-auto"
+              className="bg-gradient-to-br from-yellow-400 to-orange-500 p-6 rounded-3xl shadow-2xl max-w-sm mx-4"
+              onClick={(event) => event.stopPropagation()}
             >
               <div className="text-center">
                 <motion.div
@@ -3697,6 +3718,12 @@ export default function App() {
                   <Star className="w-4 h-4" />
                   <span className="text-sm font-bold">+50 XP</span>
                 </div>
+                <button
+                  onClick={dismissAchievementModal}
+                  className="mt-4 px-4 py-2 rounded-xl bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-white/30"
+                >
+                  Tap to close
+                </button>
               </div>
             </motion.div>
           </motion.div>
