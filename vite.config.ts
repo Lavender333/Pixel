@@ -7,7 +7,7 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), tailwindcss()],
-    base: '/Pixel/', // GitHub Pages repository name
+    base: '/', // Custom domain root
     build: {
       outDir: 'docs', // Build to docs folder for GitHub Pages
     },
