@@ -409,6 +409,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!e.isPrimary) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     activePointerIdRef.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
