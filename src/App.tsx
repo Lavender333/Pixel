@@ -3955,6 +3955,14 @@ export default function App() {
         <TabButton active={activeTab === 'challenges'} onClick={() => setActiveTab('challenges')} icon={<Target className="w-5 h-5" />} label="Challenges" />
         <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User className="w-5 h-5" />} label="Profile" />
       </nav>
+
+      <footer className="h-8 border-t border-zinc-900 bg-zinc-950 px-3 flex items-center justify-center gap-3 text-[9px] font-bold uppercase tracking-widest text-zinc-500 flex-shrink-0">
+        <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300 transition-colors">Privacy Policy</a>
+        <span className="text-zinc-700">•</span>
+        <a href="https://antoinettewillliams.com/" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300 transition-colors">antoinettewillliams.com</a>
+        <span className="text-zinc-700">•</span>
+        <span>All rights reserved @True Lavender</span>
+      </footer>
     </div>
   );
 }
