@@ -1795,15 +1795,13 @@ export default function App() {
           >
             <Download className="w-3 h-3" /> Export
           </Button>
-          {isTeenMode && (
-            <Button 
-              variant="secondary" 
-              onClick={() => setShowPreviewModal(true)} 
-              className="px-4 py-2 text-xs flex items-center gap-2"
-            >
-              <Play className="w-3 h-3" /> Preview
-            </Button>
-          )}
+          <Button 
+            variant="secondary" 
+            onClick={() => setShowPreviewModal(true)} 
+            className="px-4 py-2 text-xs flex items-center gap-2"
+          >
+            <Play className="w-3 h-3" /> Preview
+          </Button>
           <Button onClick={saveProject} className="px-4 py-2 text-xs">Save</Button>
         </div>
       </header>
@@ -1903,7 +1901,7 @@ export default function App() {
               <ToolButton active={false} onClick={() => {}} icon={<ShieldCheck className="w-5 h-5 text-zinc-700" />} label="Lvl 10 Required" />
               <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 bg-zinc-900 border border-zinc-800 p-3 rounded-2xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none w-48 shadow-2xl z-50">
                 <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-1">Teen Mode Locked</p>
-                <p className="text-[9px] text-zinc-500 leading-relaxed">Reach Level 10 to unlock 64x64 canvas, Animation, and Shading brushes.</p>
+                <p className="text-[9px] text-zinc-500 leading-relaxed">Reach Level 10 to unlock 64x64 canvas and advanced shading brushes.</p>
               </div>
             </div>
           )}
@@ -1975,9 +1973,8 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {/* Animation Bar (Teen Mode Only) */}
-      {isTeenMode && (
-        <div className="relative h-28 border-t border-zinc-900 bg-zinc-950 flex items-center px-6 gap-4 overflow-x-auto scrollbar-hide flex-shrink-0">
+      {/* Animation Bar */}
+      <div className="relative h-28 border-t border-zinc-900 bg-zinc-950 flex items-center px-6 gap-4 overflow-x-auto scrollbar-hide flex-shrink-0">
           <div className="flex flex-col gap-1 pr-4 border-r border-zinc-900">
           <div className="flex gap-2">
             <button 
@@ -2189,8 +2186,7 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-      )}
+      </div>
 
       {/* Floating Preview Window */}
       {showPreview && (

@@ -72,6 +72,8 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastPos, setLastPos] = useState<{ x: number; y: number } | null>(null);
   const [pinchDistance, setPinchDistance] = useState<number | null>(null);
+  const isDrawingRef = useRef(false);
+  const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<SelectionState>({
     active: false,
     x0: 0,
@@ -135,6 +137,30 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
       }
     }
   }, [stampPixel]);
+
+  const drawInterpolatedStroke = useCallback((from: { x: number; y: number }, to: { x: number; y: number }, color: string, size: number) => {
+    const dx = Math.abs(to.x - from.x);
+    const dy = Math.abs(to.y - from.y);
+    const sx = from.x < to.x ? 1 : -1;
+    const sy = from.y < to.y ? 1 : -1;
+    let err = dx - dy;
+    let currentX = from.x;
+    let currentY = from.y;
+
+    while (true) {
+      drawBrush(currentX, currentY, color, size);
+      if (currentX === to.x && currentY === to.y) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        currentX += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        currentY += sy;
+      }
+    }
+  }, [drawBrush]);
 
   const getSelectionRect = useCallback(() => {
     const x = Math.min(selection.x0, selection.x1);
@@ -310,7 +336,9 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
 
     toolUsedRef.current = tool === 'eraser' ? 'erase' : 'draw';
     setIsDrawing(true);
+    isDrawingRef.current = true;
     setLastPos({ x, y });
+    lastPosRef.current = { x, y };
     const useSize = tool === 'eraser' ? eraserSize : brushSize;
     const color = tool === 'eraser' ? 'transparent' : selectedColor;
     drawBrush(x, y, color, useSize);
@@ -334,33 +362,15 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
       return;
     }
 
-    if (!isDrawing || !lastPos) return;
+    if (!isDrawingRef.current || !lastPosRef.current) return;
 
-    const dx = Math.abs(x - lastPos.x);
-    const dy = Math.abs(y - lastPos.y);
-    const sx = lastPos.x < x ? 1 : -1;
-    const sy = lastPos.y < y ? 1 : -1;
-    let err = dx - dy;
-    let currentX = lastPos.x;
-    let currentY = lastPos.y;
     const useSize = tool === 'eraser' ? eraserSize : brushSize;
     const color = tool === 'eraser' ? 'transparent' : selectedColor;
 
-    while (true) {
-      drawBrush(currentX, currentY, color, useSize);
-      if (currentX === x && currentY === y) break;
-      const e2 = 2 * err;
-      if (e2 > -dy) {
-        err -= dy;
-        currentX += sx;
-      }
-      if (e2 < dx) {
-        err += dx;
-        currentY += sy;
-      }
-    }
+    drawInterpolatedStroke(lastPosRef.current, { x, y }, color, useSize);
     setLastPos({ x, y });
-  }, [tool, selection.moving, selection.floatData, selection.dragging, drawSelectionOverlay, isDrawing, lastPos, eraserSize, brushSize, selectedColor, drawBrush, getCanvasCoords]);
+    lastPosRef.current = { x, y };
+  }, [tool, selection.moving, selection.floatData, selection.dragging, drawSelectionOverlay, eraserSize, brushSize, selectedColor, drawInterpolatedStroke, getCanvasCoords]);
 
   const handleMouseUp = useCallback(() => {
     if (tool === 'select') {
@@ -383,9 +393,11 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
       return;
     }
 
-    if (!isDrawing) return;
+    if (!isDrawingRef.current) return;
     setIsDrawing(false);
+    isDrawingRef.current = false;
     setLastPos(null);
+    lastPosRef.current = null;
     commitStroke(toolUsedRef.current);
   }, [tool, selection.moving, selection.dragging, stampFloat, drawSelectionOverlay, getSelectionRect, resetSelection, onSelectionChange, selection.x0, selection.x1, selection.y0, selection.y1, isDrawing, commitStroke]);
 
@@ -419,11 +431,9 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     if (e.touches.length === 2 && pinchDistance !== null) {
       return;
     }
-    if (e.touches.length !== 1 || !isDrawing) return;
-    const { x, y } = getTouchCoords(e.touches[0]);
-    setLastPos(prev => prev ? { ...prev, x, y } : { x, y });
+    if (e.touches.length !== 1 || !isDrawingRef.current) return;
     handleMouseMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } as React.MouseEvent<HTMLCanvasElement>);
-  }, [getTouchCoords, pinchDistance, isDrawing, handleMouseMove]);
+  }, [pinchDistance, handleMouseMove]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
