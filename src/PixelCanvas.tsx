@@ -331,7 +331,10 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     if (tool === 'picker') {
       const frame = frames[currentFrameIndex];
       if (frame) {
-        const color = frame.pixels[y * gridSize + x];
+        const index = y * gridSize + x;
+        const topColor = frame.pixels[index];
+        const baseColor = frame.basePixels?.[index];
+        const color = topColor !== 'transparent' ? topColor : baseColor;
         if (color && color !== 'transparent') {
           onColorPick(color);
         }

@@ -257,6 +257,21 @@ const BIRTHDAY_SPLASH_END_AT = new Date('2026-03-10T23:59:59');
 const MIN_CANVAS_ZOOM = 0.5;
 const MAX_CANVAS_ZOOM = 6;
 
+const normalizeToHexColor = (color: string): string | null => {
+  if (!color || color === 'transparent') return null;
+  if (/^#[0-9a-fA-F]{6}$/.test(color)) return color;
+  if (/^#[0-9a-fA-F]{3}$/.test(color)) {
+    return `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`;
+  }
+  const rgbaMatch = color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+  if (!rgbaMatch) return null;
+  const toHex = (value: number) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0');
+  const r = Number(rgbaMatch[1]);
+  const g = Number(rgbaMatch[2]);
+  const b = Number(rgbaMatch[3]);
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
 // --- Components ---
 
 const Button = ({ children, onClick, variant = 'primary', className = '' }: any) => {
@@ -1004,7 +1019,10 @@ export default function App() {
   };
 
   const handleColorPick = (color: string) => {
-    setSelectedColor(color);
+    const normalized = normalizeToHexColor(color);
+    if (normalized) {
+      setSelectedColor(normalized);
+    }
     setTool('pencil');
     playSelectSound();
   };
@@ -1780,8 +1798,10 @@ export default function App() {
   };
 
   const addColorToPalette = (color: string) => {
-    if (!palette.includes(color)) {
-      setPalette([...palette, color]);
+    const normalized = normalizeToHexColor(color);
+    if (!normalized) return;
+    if (!palette.includes(normalized)) {
+      setPalette([...palette, normalized]);
     }
   };
 
@@ -2904,7 +2924,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <div className="flex-shrink-0 relative group">
                   <div className="w-12 h-12 rounded-2xl border-2 border-zinc-800 overflow-hidden" style={{ backgroundColor: selectedColor }} />
-                  <input type="color" value={selectedColor} onChange={(e) => setSelectedColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  <input type="color" value={normalizeToHexColor(selectedColor) ?? '#ffffff'} onChange={(e) => setSelectedColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
                 </div>
                 <button 
                   onClick={() => addColorToPalette(selectedColor)}
