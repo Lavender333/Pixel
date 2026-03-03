@@ -389,7 +389,7 @@ export default function App() {
   const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
   const [onionSkinning, setOnionSkinning] = useState(false);
   const [showShades, setShowShades] = useState(true);
-  const [showMobileQuickColor, setShowMobileQuickColor] = useState(false);
+  const [showMobileQuickColor, setShowMobileQuickColor] = useState(true);
   const [activePaletteTab, setActivePaletteTab] = useState<'current' | 'saved' | 'trending' | 'packs'>('current');
   const [savedPalettes, setSavedPalettes] = useState<{name: string, colors: string[]}[]>(TRENDING_PALETTES);
   const [paletteName, setPaletteName] = useState('My New Palette');
@@ -2931,11 +2931,11 @@ export default function App() {
         <div className="fixed md:absolute right-1.5 md:right-4 top-20 md:top-4 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] md:bottom-4 w-[4.25rem] md:w-auto flex flex-col gap-2 bg-zinc-900/85 backdrop-blur-xl p-2 rounded-3xl border border-zinc-800 shadow-2xl overflow-y-auto scrollbar-hide z-50 max-h-[calc(100dvh-10.5rem-env(safe-area-inset-bottom))] md:max-h-[calc(100%-2rem)] pointer-events-auto">
           <div className="md:hidden sticky top-0 z-20 self-end relative">
             <button
-              onClick={() => setShowMobileQuickColor(prev => !prev)}
+              onClick={() => setShowMobileQuickColor(true)}
               className="px-2 py-2 rounded-xl bg-zinc-900/95 border border-zinc-800 text-[8px] font-bold uppercase tracking-widest text-zinc-300 flex items-center gap-2"
             >
               <span className="w-4 h-4 rounded border border-zinc-700" style={{ backgroundColor: selectedColor }} />
-              <span>{showMobileQuickColor ? 'Close' : 'Color'}</span>
+              <span>Color</span>
             </button>
 
             {showMobileQuickColor && (
