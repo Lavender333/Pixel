@@ -2608,17 +2608,18 @@ export default function App() {
 
         {/* Floating Tool Panel */}
         <div className="fixed md:absolute right-2 md:right-4 top-20 md:top-4 bottom-24 md:bottom-4 flex flex-col gap-2 bg-zinc-900/85 backdrop-blur-xl p-2 rounded-3xl border border-zinc-800 shadow-2xl overflow-y-auto scrollbar-hide z-50 max-h-[calc(100dvh-9rem)] md:max-h-[calc(100%-2rem)] pointer-events-auto">
-          <div className="md:hidden sticky top-0 z-10 flex flex-col gap-2">
+          <div className="md:hidden sticky top-0 z-20 self-end relative">
             <button
               onClick={() => setShowMobileQuickColor(prev => !prev)}
-              className="w-full px-2 py-2 rounded-xl bg-zinc-900/95 border border-zinc-800 text-[8px] font-bold uppercase tracking-widest text-zinc-300 flex items-center justify-between"
+              className="px-2 py-2 rounded-xl bg-zinc-900/95 border border-zinc-800 text-[8px] font-bold uppercase tracking-widest text-zinc-300 flex items-center gap-2"
             >
-              <span>Quick Color</span>
-              <span>{showMobileQuickColor ? 'Hide' : 'Show'}</span>
+              <span className="w-4 h-4 rounded border border-zinc-700" style={{ backgroundColor: selectedColor }} />
+              <span>{showMobileQuickColor ? 'Close' : 'Color'}</span>
             </button>
 
             {showMobileQuickColor && (
-              <div className="bg-zinc-900/95 border border-zinc-800 rounded-2xl p-2 flex flex-col gap-2">
+              <div className="absolute right-0 mt-2 w-52 bg-zinc-900/95 border border-zinc-800 rounded-2xl p-2 flex flex-col gap-2 shadow-2xl">
+                <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest text-center">Quick Color</span>
                 <div className="flex items-center gap-2">
                   <label className="w-10 h-10 rounded-xl border-2 border-zinc-700 overflow-hidden relative flex-shrink-0">
                     <span className="absolute inset-0" style={{ backgroundColor: selectedColor }} />
@@ -3959,15 +3960,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Bottom Navigation */}
-      <nav className="h-16 border-t border-zinc-900 bg-zinc-950/80 backdrop-blur-xl flex items-center px-4 gap-2 flex-shrink-0">
-        <TabButton active={activeTab === 'create'} onClick={() => setActiveTab('create')} icon={<PlusCircle className="w-5 h-5" />} label="Create" />
-        <TabButton active={activeTab === 'studio'} onClick={() => setActiveTab('studio')} icon={<Map className="w-5 h-5" />} label="Studio" />
-        <TabButton active={activeTab === 'closet'} onClick={() => setActiveTab('closet')} icon={<Shirt className="w-5 h-5" />} label="Closet" />
-        <TabButton active={activeTab === 'challenges'} onClick={() => setActiveTab('challenges')} icon={<Target className="w-5 h-5" />} label="Challenges" />
-        <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User className="w-5 h-5" />} label="Profile" />
-      </nav>
-
       <footer className="h-8 border-t border-zinc-900 bg-zinc-950 px-3 flex items-center justify-center gap-3 text-[9px] font-bold uppercase tracking-widest text-zinc-500 flex-shrink-0">
         <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300 transition-colors">Privacy Policy</a>
         <span className="text-zinc-700">•</span>
@@ -3975,6 +3967,15 @@ export default function App() {
         <span className="text-zinc-700">•</span>
         <span>All rights reserved @True Lavender</span>
       </footer>
+
+      {/* Bottom Navigation */}
+      <nav className="h-16 border-t border-zinc-900 bg-zinc-950/80 backdrop-blur-xl flex items-center px-4 gap-2 flex-shrink-0 pb-[max(env(safe-area-inset-bottom),0px)]">
+        <TabButton active={activeTab === 'create'} onClick={() => setActiveTab('create')} icon={<PlusCircle className="w-5 h-5" />} label="Create" />
+        <TabButton active={activeTab === 'studio'} onClick={() => setActiveTab('studio')} icon={<Map className="w-5 h-5" />} label="Studio" />
+        <TabButton active={activeTab === 'closet'} onClick={() => setActiveTab('closet')} icon={<Shirt className="w-5 h-5" />} label="Closet" />
+        <TabButton active={activeTab === 'challenges'} onClick={() => setActiveTab('challenges')} icon={<Target className="w-5 h-5" />} label="Challenges" />
+        <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<User className="w-5 h-5" />} label="Profile" />
+      </nav>
     </div>
   );
 }
