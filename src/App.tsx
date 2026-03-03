@@ -56,7 +56,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
-import { TEMPLATE_DEFINITIONS, buildColorableMask, getTemplateLockMask, getTemplatePixels, TemplateDefinition } from './templateData';
+import { TEMPLATE_DEFINITIONS, buildColorableMask, getTemplateLockMask, getTemplatePixels, TemplateCategory, TemplateDefinition } from './templateData';
 import { Frame, Project, ProjectData, UserStats, Challenge, Submission } from './types';
 import { PixelCanvas, PixelCanvasHandle } from './PixelCanvas';
 
@@ -69,7 +69,6 @@ const STARTER_PALETTE = [
 ];
 
 type TemplateCard = TemplateDefinition & { icon: React.ReactNode };
-
 const templateIconByCategory: Record<string, React.ReactNode> = {
   blank: <PlusCircle className="w-6 h-6" />,
   cat: <Sparkles className="w-6 h-6" />,
@@ -101,6 +100,16 @@ const TEMPLATES: TemplateCard[] = TEMPLATE_DEFINITIONS.map(template => ({
   ...template,
   icon: templateIconByCategory[template.id] ?? <Palette className="w-6 h-6" />,
 }));
+
+const TEMPLATE_SECTION_ORDER: TemplateCategory[] = ['characters', 'items', 'scenes', 'color-in', 'blank'];
+
+const TEMPLATE_SECTION_META: Record<TemplateCategory, { label: string; hint: string }> = {
+  characters: { label: 'Characters & Pets', hint: 'Expressive silhouettes with strong readability at small sizes.' },
+  items: { label: 'Items & Gear', hint: 'Material-aware sprites with cleaner collectible polish.' },
+  scenes: { label: 'Scenes', hint: 'Mini environments with layered depth and atmosphere.' },
+  'color-in': { label: 'Color-In Templates', hint: 'Lock + fill starters with completion rewards.' },
+  blank: { label: 'Blank Canvases', hint: 'Start fresh with a transparent sheet.' },
+};
 
 const TRENDING_PALETTES = [
   { name: 'Y2K', colors: ['#FF00FF', '#00FFFF', '#FFFF00', '#FF0088', '#8800FF'] },
@@ -1756,61 +1765,116 @@ export default function App() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.9 }}
-          className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[110] flex items-center justify-center p-8"
+          className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[110] flex items-center justify-center p-4 md:p-8"
         >
-          <div className="max-w-2xl w-full">
-            <h2 className="text-2xl font-display italic text-white mb-8 text-center">Choose a Starting Base</h2>
-            <div className="mb-8 rounded-[28px] bg-gradient-to-r from-rose-500/30 to-orange-500/30 border border-white/10 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4" /> Template Market Live
-                </p>
-                <p className="text-sm text-white/90 mt-1">Need pro bases? Jump to the Studio market for fresh drops.</p>
+          <div className="w-full max-w-6xl max-h-[90vh] rounded-[32px] border border-zinc-800 bg-zinc-950/95 shadow-2xl shadow-black/60 overflow-hidden flex flex-col">
+            <div className="px-6 md:px-8 py-6 border-b border-zinc-900 bg-gradient-to-r from-purple-600/20 via-fuchsia-600/10 to-blue-500/20">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-bold text-purple-300 uppercase tracking-[0.25em]">Starter Library</p>
+                  <h2 className="text-2xl md:text-3xl font-display italic text-white mt-2">Choose a Starting Base</h2>
+                  <p className="text-zinc-400 text-sm mt-2">Pick a premium starter by category, then customize it in your own style.</p>
+                </div>
+                <button
+                  onClick={() => setShowTemplates(false)}
+                  className="w-10 h-10 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 flex items-center justify-center"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  setShowTemplates(false);
-                  travelToStudio('template-market');
-                }}
-                className="w-full md:w-auto px-4 py-2 rounded-2xl bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-white/30"
+            </div>
+
+            <div className="px-6 md:px-8 py-6 border-b border-zinc-900">
+              <div className="rounded-[24px] bg-gradient-to-r from-rose-500/20 to-orange-500/20 border border-white/10 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4" /> Template Market Live
+                  </p>
+                  <p className="text-sm text-white/90 mt-1">Need pro bases? Jump to the Studio market for fresh drops.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowTemplates(false);
+                    travelToStudio('template-market');
+                  }}
+                  className="w-full md:w-auto px-4 py-2 rounded-2xl bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-white/30"
+                >
+                  Visit Template Market
+                </button>
+              </div>
+            </div>
+
+            <div className="px-6 md:px-8 py-6 overflow-y-auto">
+              {TEMPLATE_SECTION_ORDER.map(section => {
+                const sectionTemplates = TEMPLATES.filter(template => template.category === section);
+                if (!sectionTemplates.length) return null;
+
+                return (
+                  <section key={section} className="mb-8 last:mb-0">
+                    <div className="mb-3 flex items-end justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-white uppercase tracking-widest">{TEMPLATE_SECTION_META[section].label}</h3>
+                        <p className="text-[11px] text-zinc-500 mt-1">{TEMPLATE_SECTION_META[section].hint}</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{sectionTemplates.length} Templates</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {sectionTemplates.map(t => (
+                        <button
+                          key={t.id}
+                          disabled={t.locked && !isTeenMode}
+                          onClick={() => startWithTemplate(t)}
+                          className={`bg-gradient-to-b from-zinc-900 to-zinc-950 border p-5 rounded-3xl hover:border-purple-500 transition-all flex flex-col items-center gap-3 group relative ${activeTemplateId === t.id ? 'border-purple-500 shadow-lg shadow-purple-500/20' : 'border-zinc-800'} ${t.locked && !isTeenMode ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          {t.locked && !isTeenMode && (
+                            <div className="absolute top-3 right-3">
+                              <ShieldCheck className="w-4 h-4 text-purple-500" />
+                            </div>
+                          )}
+
+                          <div className="w-12 h-12 bg-zinc-800 rounded-2xl flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
+                            {t.icon}
+                          </div>
+
+                          <div className="flex flex-col items-center">
+                            <span className="font-bold text-lg text-zinc-300 leading-none text-center">{t.name}</span>
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-2">
+                              {t.size}x{t.size} {t.locked && !isTeenMode ? '(Lvl 10)' : ''}
+                            </span>
+                            <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest mt-1">
+                              {t.kind === 'color-in' ? 'Lock + Fill' : section}
+                            </span>
+                          </div>
+
+                          {t.palette?.length ? (
+                            <div className="flex items-center gap-1 mt-1">
+                              {t.palette.slice(0, 5).map(color => (
+                                <span
+                                  key={`${t.id}-${color}`}
+                                  className="w-3 h-3 rounded-full border border-zinc-700"
+                                  style={{ backgroundColor: color }}
+                                />
+                              ))}
+                            </div>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+
+            <div className="px-6 md:px-8 py-4 border-t border-zinc-900 bg-zinc-950/80">
+              <button 
+                onClick={() => setShowTemplates(false)}
+                className="text-zinc-400 hover:text-white w-full text-center font-bold"
               >
-                Visit Template Market
+                Back
               </button>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {TEMPLATES.map(t => (
-                <button
-                  key={t.id}
-                  disabled={t.locked && !isTeenMode}
-                  onClick={() => startWithTemplate(t)}
-                  className={`bg-zinc-900 border p-6 rounded-3xl hover:border-purple-500 transition-all flex flex-col items-center gap-4 group relative ${activeTemplateId === t.id ? 'border-purple-500' : 'border-zinc-800'} ${t.locked && !isTeenMode ? 'opacity-40 cursor-not-allowed' : ''}`}
-                >
-                  {t.locked && !isTeenMode && (
-                    <div className="absolute top-3 right-3">
-                      <ShieldCheck className="w-4 h-4 text-purple-500" />
-                    </div>
-                  )}
-                  <div className="w-12 h-12 bg-zinc-800 rounded-2xl flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
-                    {t.icon}
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <span className="font-bold text-sm text-zinc-300">{t.name}</span>
-                    <span className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest mt-1">
-                      {t.size}x{t.size} {t.locked && !isTeenMode ? '(Lvl 10)' : ''}
-                    </span>
-                    <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
-                      {t.kind === 'color-in' ? 'Lock + Fill' : t.category}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <button 
-              onClick={() => setShowTemplates(false)}
-              className="mt-8 text-zinc-500 hover:text-white w-full text-center font-bold"
-            >
-              Back
-            </button>
           </div>
         </motion.div>
       )}
