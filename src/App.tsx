@@ -4222,6 +4222,11 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-[#0a0a0a] text-zinc-300 selection:bg-purple-500/30">
+      {/* Debug: App is rendering */}
+      <div style={{ position: 'fixed', top: 0, left: 0, background: 'white', color: 'black', zIndex: 9999, padding: '5px' }}>
+        App Loaded
+      </div>
+      {console.log('App component rendering')}
       {onboarding && activeTab === 'create' && showBirthdaySplash && <BirthdaySplashView />}
       {onboarding && activeTab === 'create' && <OnboardingView />}
       <TemplatesModal />
