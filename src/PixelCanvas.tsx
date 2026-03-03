@@ -41,11 +41,14 @@ interface PixelCanvasProps {
   onPixelChange: (x: number, y: number, color: string) => string[] | null;
   onStrokeComplete?: (pixels: string[] | null, action: 'draw' | 'erase' | 'fill') => void;
   onColorPick: (color: string) => void;
+  onZoomChange?: (zoom: number) => void;
   isLockedPixel?: (x: number, y: number) => boolean;
   onSelectionChange?: (selection: { active: boolean; x0: number; y0: number; x1: number; y1: number } | null) => void;
 }
 
 const CANVAS_SCALE = 8;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 6;
 
 export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   gridSize,
@@ -62,6 +65,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   onPixelChange,
   onStrokeComplete,
   onColorPick,
+  onZoomChange,
   isLockedPixel,
   onSelectionChange,
 }, ref) => {
@@ -74,6 +78,8 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastPos, setLastPos] = useState<{ x: number; y: number } | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
+  const pinchGestureRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
+  const touchPointsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const isDrawingRef = useRef(false);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<SelectionState>({
@@ -408,21 +414,74 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   }, [tool, selection.moving, selection.dragging, stampFloat, drawSelectionOverlay, getSelectionRect, resetSelection, onSelectionChange, selection.x0, selection.x1, selection.y0, selection.y1, commitStroke]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch') {
+      e.preventDefault();
+      touchPointsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (touchPointsRef.current.size === 2) {
+        if (isDrawingRef.current) {
+          endInteraction();
+        }
+        const points = Array.from(touchPointsRef.current.values()) as Array<{ x: number; y: number }>;
+        const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+        if (distance > 0) {
+          pinchGestureRef.current = { startDistance: distance, startZoom: zoom };
+        }
+        activePointerIdRef.current = null;
+        return;
+      }
+
+      if (touchPointsRef.current.size > 1) {
+        return;
+      }
+    }
+
     if (!e.isPrimary) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     activePointerIdRef.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
     startInteraction(e.clientX, e.clientY);
-  }, [startInteraction]);
+  }, [endInteraction, startInteraction, zoom]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'touch' && touchPointsRef.current.has(e.pointerId)) {
+      touchPointsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (pinchGestureRef.current && touchPointsRef.current.size >= 2) {
+      e.preventDefault();
+      const points = Array.from(touchPointsRef.current.values()) as Array<{ x: number; y: number }>;
+      const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      if (distance > 0 && onZoomChange) {
+        const rawZoom = pinchGestureRef.current.startZoom * (distance / pinchGestureRef.current.startDistance);
+        const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, rawZoom));
+        onZoomChange(Math.round(nextZoom * 100) / 100);
+      }
+      return;
+    }
+
     if (!e.isPrimary || activePointerIdRef.current !== e.pointerId) return;
     e.preventDefault();
     moveInteraction(e.clientX, e.clientY);
-  }, [moveInteraction]);
+  }, [moveInteraction, onZoomChange]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (touchPointsRef.current.has(e.pointerId)) {
+      touchPointsRef.current.delete(e.pointerId);
+    }
+
+    if (pinchGestureRef.current) {
+      e.preventDefault();
+      if (touchPointsRef.current.size < 2) {
+        pinchGestureRef.current = null;
+      }
+      if (activePointerIdRef.current === e.pointerId) {
+        activePointerIdRef.current = null;
+      }
+      return;
+    }
+
     if (!e.isPrimary || activePointerIdRef.current !== e.pointerId) return;
     e.preventDefault();
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -433,6 +492,21 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   }, [endInteraction]);
 
   const handlePointerCancel = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (touchPointsRef.current.has(e.pointerId)) {
+      touchPointsRef.current.delete(e.pointerId);
+    }
+
+    if (pinchGestureRef.current) {
+      e.preventDefault();
+      if (touchPointsRef.current.size < 2) {
+        pinchGestureRef.current = null;
+      }
+      if (activePointerIdRef.current === e.pointerId) {
+        activePointerIdRef.current = null;
+      }
+      return;
+    }
+
     if (!e.isPrimary || activePointerIdRef.current !== e.pointerId) return;
     e.preventDefault();
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {

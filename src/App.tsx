@@ -254,6 +254,8 @@ type StudioTask = (typeof DAILY_STUDIO_TASKS)[number] & { claimed: boolean };
 
 const MAX_FRAMES = 40;
 const BIRTHDAY_SPLASH_END_AT = new Date('2026-03-10T23:59:59');
+const MIN_CANVAS_ZOOM = 0.5;
+const MAX_CANVAS_ZOOM = 6;
 
 // --- Components ---
 
@@ -456,6 +458,12 @@ export default function App() {
     });
     audioEngineRef.current?.click();
   };
+
+  const handleZoomChange = useCallback((nextZoom: number) => {
+    const clamped = Math.max(MIN_CANVAS_ZOOM, Math.min(MAX_CANVAS_ZOOM, nextZoom));
+    setZoom(Math.round(clamped * 100) / 100);
+  }, []);
+
   const showFrameNotice = (message: string) => {
     if (frameNoticeTimeout.current) {
       clearTimeout(frameNoticeTimeout.current);
@@ -1119,6 +1127,14 @@ export default function App() {
     const baseBasePixels = currentFrame.basePixels ? [...currentFrame.basePixels] : undefined;
     let newFrames: Frame[] = [];
 
+    const hexToRgba = (hex: string, alpha: number) => {
+      const clean = hex.replace('#', '');
+      const r = parseInt(clean.slice(0, 2), 16);
+      const g = parseInt(clean.slice(2, 4), 16);
+      const b = parseInt(clean.slice(4, 6), 16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    };
+
     const createFrame = (pixels: string[]) => ({
       id: Math.random().toString(36).substr(2, 9),
       pixels,
@@ -1623,17 +1639,25 @@ export default function App() {
           const x = Math.round(cx + 6 * Math.cos(angle));
           const y = Math.round(cy + 6 * Math.sin(angle));
           const color = colors[i % colors.length];
-          drawPixel(x, y, `rgba(${color.slice(1, 3)},${color.slice(3, 5)},${color.slice(5, 7)},0.6)`);
+          drawPixel(x, y, hexToRgba(color, 0.6));
         }
 
         newFrames.push(createFrame(pixels));
       }
     }
 
+    if (newFrames.length === 0) {
+      showFrameNotice('Preset unavailable right now');
+      playErrorSound();
+      setShowAnimationTools(false);
+      return;
+    }
+
     setFrames(newFrames);
     setCurrentFrameIndex(0);
     setPreviewFrameIndex(0);
-    setIsPlaying(false);
+    setShowPreview(true);
+    setIsPlaying(newFrames.length > 1);
     setShowAnimationTools(false);
     addXp(5, 'animation');
     updateStreak();
@@ -2299,6 +2323,7 @@ export default function App() {
               tool={tool}
               mirrorMode={mirrorMode}
               zoom={zoom}
+              onZoomChange={handleZoomChange}
               brushSize={brushSize}
               eraserSize={eraserSize}
               showGrid={showGrid}
@@ -2424,8 +2449,8 @@ export default function App() {
 
           <div className="px-2 py-2 flex flex-col items-center gap-1 mt-auto">
             <input 
-              type="range" min="0.5" max="3" step="0.1" value={zoom} 
-              onChange={(e) => setZoom(parseFloat(e.target.value))}
+              type="range" min={MIN_CANVAS_ZOOM} max={MAX_CANVAS_ZOOM} step="0.1" value={zoom} 
+              onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
               className="h-16 [writing-mode:vertical-lr] accent-purple-500 cursor-pointer"
             />
             <span className="text-[7px] font-bold text-zinc-500">ZOOM</span>
