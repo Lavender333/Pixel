@@ -400,6 +400,9 @@ export default function App() {
     
     try {
       const audioContext = initAudioContext();
+      if (audioContext.state === 'suspended') {
+        void audioContext.resume();
+      }
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
       
@@ -2370,27 +2373,27 @@ export default function App() {
           <div className="flex gap-2">
             <button 
               onClick={() => {
-                setIsPlaying(!isPlaying);
+                setIsPlaying(prev => !prev);
               }}
               className={`p-2 rounded-lg transition-all ${isPlaying ? 'bg-red-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
             >
               {isPlaying ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
             </button>
             <button 
-              onClick={() => setShowPreview(!showPreview)}
+              onClick={() => setShowPreview(prev => !prev)}
               className={`p-2 rounded-lg transition-all ${showPreview ? 'bg-purple-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
             >
               <Eye className="w-4 h-4" />
             </button>
             <button 
-              onClick={() => setOnionSkinning(!onionSkinning)}
+              onClick={() => setOnionSkinning(prev => !prev)}
               className={`p-2 rounded-lg transition-all ${onionSkinning ? 'bg-orange-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
               title="Onion Skinning"
             >
               <Layers className="w-4 h-4" />
             </button>
             <button 
-              onClick={() => setSoundEnabled(!soundEnabled)}
+              onClick={() => setSoundEnabled(prev => !prev)}
               className={`p-2 rounded-lg transition-all ${soundEnabled ? 'bg-green-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
               title="Sound Effects"
             >
@@ -2429,11 +2432,13 @@ export default function App() {
             <div className="flex items-center gap-2 mt-1">
               <span className="text-[8px] font-bold text-zinc-600">FPS</span>
               <input 
-                type="range" min="1" max="24" value={fps} 
+                type="range" min="1" max="24" step="1" value={fps} 
                 onChange={(e) => setFps(parseInt(e.target.value))}
-                className="w-16 h-1 accent-purple-500"
+                onPointerDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+                className="w-24 h-2 accent-purple-500 cursor-pointer touch-none"
               />
-              <span className="text-[8px] font-bold text-zinc-500 w-4">{fps}</span>
+              <span className="text-[8px] font-bold text-zinc-500 w-8 text-right">{fps}</span>
             </div>
           </div>
 
