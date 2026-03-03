@@ -350,6 +350,7 @@ export default function App() {
   type ExportFormat = 'png' | 'gif' | 'sprite-sheet' | 'jpeg' | 'print' | 'palette';
   type HistoryEntry = { frameIndex: number; pixels: string[] };
   type CoreHistorySnapshot = { entries: HistoryEntry[]; index: number };
+  type TimelineSnapshot = { frames: Frame[]; currentFrameIndex: number; previewFrameIndex: number };
 
   // Navigation & UI State
   const [activeTab, setActiveTab] = useState<'create' | 'studio' | 'closet' | 'challenges' | 'profile'>('create');
@@ -413,6 +414,8 @@ export default function App() {
   const hasTrackedCanvasStartedRef = useRef(false);
   const historyIndexRef = useRef(-1);
   const framesRef = useRef<Frame[]>(frames);
+  const currentFrameIndexRef = useRef(currentFrameIndex);
+  const previewFrameIndexRef = useRef(previewFrameIndex);
   const corePaletteAdapterCacheRef = useRef(new Map<string, { paletteEntries: Array<{ hex: string }>; colorToIndex: Map<string, number> }>());
   const coreHistoryRef = useRef<CoreHistorySnapshot>({ entries: [], index: -1 });
   const coreCommandStackRef = useRef<CommandStack | null>(null);
@@ -483,6 +486,36 @@ export default function App() {
     setHistoryIndex(snapshot.index);
   }, [cloneHistorySnapshot]);
 
+  const cloneTimelineSnapshot = useCallback((snapshot: TimelineSnapshot): TimelineSnapshot => ({
+    frames: snapshot.frames.map(frame => ({
+      ...frame,
+      pixels: [...frame.pixels],
+      basePixels: frame.basePixels ? [...frame.basePixels] : undefined,
+    })),
+    currentFrameIndex: snapshot.currentFrameIndex,
+    previewFrameIndex: snapshot.previewFrameIndex,
+  }), []);
+
+  const captureTimelineSnapshot = useCallback((): TimelineSnapshot => ({
+    frames: framesRef.current.map(frame => ({
+      ...frame,
+      pixels: [...frame.pixels],
+      basePixels: frame.basePixels ? [...frame.basePixels] : undefined,
+    })),
+    currentFrameIndex: currentFrameIndexRef.current,
+    previewFrameIndex: previewFrameIndexRef.current,
+  }), []);
+
+  const applyTimelineSnapshot = useCallback((snapshot: TimelineSnapshot) => {
+    const cloned = cloneTimelineSnapshot(snapshot);
+    framesRef.current = cloned.frames;
+    currentFrameIndexRef.current = cloned.currentFrameIndex;
+    previewFrameIndexRef.current = cloned.previewFrameIndex;
+    setFrames(cloned.frames);
+    setCurrentFrameIndex(cloned.currentFrameIndex);
+    setPreviewFrameIndex(cloned.previewFrameIndex);
+  }, [cloneTimelineSnapshot]);
+
   const executeCoreHistoryCommand = useCallback((nextSnapshot: CoreHistorySnapshot, label: string) => {
     const commandStack = coreCommandStackRef.current;
     if (!commandStack) return;
@@ -502,6 +535,25 @@ export default function App() {
     commandStack.execute(command);
     syncHistoryFromCore();
   }, [cloneHistorySnapshot, syncHistoryFromCore]);
+
+  const executeTimelineCommand = useCallback((nextTimeline: TimelineSnapshot, label: string) => {
+    const commandStack = coreCommandStackRef.current;
+    if (!commandStack) return;
+
+    const previousTimeline = captureTimelineSnapshot();
+    const applySnapshot = (snapshot: TimelineSnapshot) => {
+      applyTimelineSnapshot(snapshot);
+    };
+
+    const command: Command = {
+      id: `timeline_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      label,
+      apply: () => applySnapshot(nextTimeline),
+      revert: () => applySnapshot(previousTimeline),
+    };
+
+    commandStack.execute(command);
+  }, [applyTimelineSnapshot, captureTimelineSnapshot]);
 
   const flushDraftToState = useCallback(() => {
     if (!strokeDraftRef.current || strokeFrameIndexRef.current === null) return;
@@ -528,6 +580,14 @@ export default function App() {
   useEffect(() => {
     framesRef.current = frames;
   }, [frames]);
+
+  useEffect(() => {
+    currentFrameIndexRef.current = currentFrameIndex;
+  }, [currentFrameIndex]);
+
+  useEffect(() => {
+    previewFrameIndexRef.current = previewFrameIndex;
+  }, [previewFrameIndex]);
 
   useEffect(() => {
     historyIndexRef.current = historyIndex;
@@ -1041,10 +1101,12 @@ export default function App() {
   const undo = useCallback(() => {
     const commandStack = coreCommandStackRef.current;
     if (!commandStack?.canUndo) return;
+    const previousHistoryIndex = coreHistoryRef.current.index;
     if (!commandStack.undo()) return;
     syncHistoryFromCore();
 
     const snapshot = coreHistoryRef.current;
+    if (snapshot.index === previousHistoryIndex) return;
     const prevEntry = snapshot.entries[snapshot.index];
     if (!prevEntry) return;
 
@@ -1061,10 +1123,12 @@ export default function App() {
   const redo = useCallback(() => {
     const commandStack = coreCommandStackRef.current;
     if (!commandStack?.canRedo) return;
+    const previousHistoryIndex = coreHistoryRef.current.index;
     if (!commandStack.redo()) return;
     syncHistoryFromCore();
 
     const snapshot = coreHistoryRef.current;
+    if (snapshot.index === previousHistoryIndex) return;
     const nextEntry = snapshot.entries[snapshot.index];
     if (!nextEntry) return;
 
@@ -1336,9 +1400,11 @@ export default function App() {
       return;
     }
     const newFrame = createBlankFrame();
-    setFrames([...frames, newFrame]);
-    setCurrentFrameIndex(frames.length);
-    setPreviewFrameIndex(frames.length);
+    executeTimelineCommand({
+      frames: [...frames, newFrame],
+      currentFrameIndex: frames.length,
+      previewFrameIndex: frames.length,
+    }, 'Frame added');
     playAddLayerSound();
   };
 
@@ -1357,9 +1423,11 @@ export default function App() {
     };
     const newFrames = [...frames];
     newFrames.splice(index + 1, 0, duplicated);
-    setFrames(newFrames);
-    setCurrentFrameIndex(index + 1);
-    setPreviewFrameIndex(index + 1);
+    executeTimelineCommand({
+      frames: newFrames,
+      currentFrameIndex: index + 1,
+      previewFrameIndex: index + 1,
+    }, 'Frame duplicated');
     playAddLayerSound();
   };
 
@@ -1370,13 +1438,18 @@ export default function App() {
       return;
     }
     const newFrames = frames.filter((_, idx) => idx !== index);
-    setFrames(newFrames);
-    setCurrentFrameIndex((prev) => {
-      if (prev > index) return prev - 1;
-      if (prev === index) return Math.max(0, index - 1);
-      return prev;
-    });
-    setPreviewFrameIndex((prev) => Math.min(prev, newFrames.length - 1));
+    const nextCurrent = (() => {
+      const current = currentFrameIndexRef.current;
+      if (current > index) return current - 1;
+      if (current === index) return Math.max(0, index - 1);
+      return current;
+    })();
+    const nextPreview = Math.min(previewFrameIndexRef.current, newFrames.length - 1);
+    executeTimelineCommand({
+      frames: newFrames,
+      currentFrameIndex: nextCurrent,
+      previewFrameIndex: nextPreview,
+    }, 'Frame deleted');
   };
 
   const handlePlaybackToggle = () => {
@@ -1409,21 +1482,27 @@ export default function App() {
     const reordered = [...frames];
     const [moved] = reordered.splice(fromIndex, 1);
     reordered.splice(toIndex, 0, moved);
-    setFrames(reordered);
+    const nextCurrent = (() => {
+      const current = currentFrameIndexRef.current;
+      if (current === fromIndex) return toIndex;
+      if (fromIndex < toIndex && current > fromIndex && current <= toIndex) return current - 1;
+      if (fromIndex > toIndex && current >= toIndex && current < fromIndex) return current + 1;
+      return current;
+    })();
 
-    setCurrentFrameIndex(prev => {
-      if (prev === fromIndex) return toIndex;
-      if (fromIndex < toIndex && prev > fromIndex && prev <= toIndex) return prev - 1;
-      if (fromIndex > toIndex && prev >= toIndex && prev < fromIndex) return prev + 1;
-      return prev;
-    });
+    const nextPreview = (() => {
+      const preview = previewFrameIndexRef.current;
+      if (preview === fromIndex) return toIndex;
+      if (fromIndex < toIndex && preview > fromIndex && preview <= toIndex) return preview - 1;
+      if (fromIndex > toIndex && preview >= toIndex && preview < fromIndex) return preview + 1;
+      return preview;
+    })();
 
-    setPreviewFrameIndex(prev => {
-      if (prev === fromIndex) return toIndex;
-      if (fromIndex < toIndex && prev > fromIndex && prev <= toIndex) return prev - 1;
-      if (fromIndex > toIndex && prev >= toIndex && prev < fromIndex) return prev + 1;
-      return prev;
-    });
+    executeTimelineCommand({
+      frames: reordered,
+      currentFrameIndex: nextCurrent,
+      previewFrameIndex: nextPreview,
+    }, 'Frame moved');
   };
 
   const nudgeSelection = (dx: number, dy: number) => {
