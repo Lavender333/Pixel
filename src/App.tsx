@@ -1745,13 +1745,6 @@ export default function App() {
         <Button onClick={() => setShowTemplates(true)} className="w-full py-4 text-lg">
           Start Creating
         </Button>
-        
-        <button 
-          onClick={() => setOnboarding(false)}
-          className="mt-6 text-zinc-600 text-sm font-medium hover:text-zinc-400 transition-colors"
-        >
-          Skip for now
-        </button>
       </motion.div>
     </div>
   );
