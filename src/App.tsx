@@ -2428,6 +2428,35 @@ export default function App() {
 
         {/* Floating Tool Panel */}
         <div className="absolute right-4 top-4 bottom-4 flex flex-col gap-2 bg-zinc-900/80 backdrop-blur-xl p-2 rounded-3xl border border-zinc-800 shadow-2xl overflow-y-auto scrollbar-hide z-40 max-h-[calc(100%-2rem)]">
+          <div className="md:hidden bg-zinc-900/80 border border-zinc-800 rounded-2xl p-2 flex flex-col gap-2">
+            <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest text-center">Quick Color</span>
+            <div className="flex items-center gap-2">
+              <label className="w-10 h-10 rounded-xl border-2 border-zinc-700 overflow-hidden relative flex-shrink-0">
+                <span className="absolute inset-0" style={{ backgroundColor: selectedColor }} />
+                <input
+                  type="color"
+                  value={normalizeToHexColor(selectedColor) ?? '#ffffff'}
+                  onChange={(e) => setSelectedColor(e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  aria-label="Select color"
+                />
+              </label>
+              <button
+                onClick={() => setActivePaletteTab('current')}
+                className="flex-1 px-2 py-2 rounded-xl bg-zinc-800 border border-zinc-700 text-[8px] font-bold uppercase tracking-widest text-zinc-300"
+              >
+                My Palette
+              </button>
+              <button
+                onClick={() => addColorToPalette(selectedColor)}
+                className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center"
+                title="Add color"
+              >
+                <Plus className="w-4 h-4 text-zinc-300" />
+              </button>
+            </div>
+          </div>
+
           <ToolButton active={tool === 'pencil'} onClick={() => setTool('pencil')} icon={<Pencil className="w-5 h-5" />} label="Pencil" />
           <ToolButton active={tool === 'fill'} onClick={() => setTool('fill')} icon={<PaintBucket className="w-5 h-5" />} label="Fill" />
           <ToolButton active={tool === 'eraser'} onClick={() => setTool('eraser')} icon={<Eraser className="w-5 h-5" />} label="Eraser" />
@@ -2903,29 +2932,29 @@ export default function App() {
       </AnimatePresence>
 
       {/* Bottom Palette */}
-      <div className="h-32 border-t border-zinc-900 bg-zinc-950 flex flex-col flex-shrink-0">
+      <div className="h-40 md:h-32 border-t border-zinc-900 bg-zinc-950 flex flex-col flex-shrink-0">
         <div className="flex px-6 border-b border-zinc-900 overflow-x-auto scrollbar-hide">
           <button 
             onClick={() => setActivePaletteTab('current')}
-            className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${activePaletteTab === 'current' ? 'text-purple-500 border-b-2 border-purple-500' : 'text-zinc-500'}`}
+            className={`px-4 py-2 text-[11px] md:text-[10px] font-bold uppercase tracking-widest transition-all ${activePaletteTab === 'current' ? 'text-purple-500 border-b-2 border-purple-500' : 'text-zinc-500'}`}
           >
             My Palette
           </button>
           <button 
             onClick={() => setActivePaletteTab('saved')}
-            className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${activePaletteTab === 'saved' ? 'text-purple-500 border-b-2 border-purple-500' : 'text-zinc-500'}`}
+            className={`px-4 py-2 text-[11px] md:text-[10px] font-bold uppercase tracking-widest transition-all ${activePaletteTab === 'saved' ? 'text-purple-500 border-b-2 border-purple-500' : 'text-zinc-500'}`}
           >
             Saved
           </button>
           <button 
             onClick={() => setActivePaletteTab('trending')}
-            className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${activePaletteTab === 'trending' ? 'text-purple-500 border-b-2 border-purple-500' : 'text-zinc-500'}`}
+            className={`px-4 py-2 text-[11px] md:text-[10px] font-bold uppercase tracking-widest transition-all ${activePaletteTab === 'trending' ? 'text-purple-500 border-b-2 border-purple-500' : 'text-zinc-500'}`}
           >
             Trending
           </button>
         </div>
         
-        <div className="flex-1 flex items-center px-6 gap-4 overflow-x-auto scrollbar-hide">
+        <div className="flex-1 flex items-start md:items-center px-4 md:px-6 py-2 md:py-0 gap-3 md:gap-4 overflow-x-auto scrollbar-hide">
           {activePaletteTab === 'current' ? (
             <>
               <button 
@@ -2942,7 +2971,7 @@ export default function App() {
               
               <div className="flex items-center gap-2">
                 <div className="flex-shrink-0 relative group">
-                  <div className="w-12 h-12 rounded-2xl border-2 border-zinc-800 overflow-hidden" style={{ backgroundColor: selectedColor }} />
+                  <div className="w-12 h-12 md:w-12 md:h-12 rounded-2xl border-2 border-zinc-800 overflow-hidden" style={{ backgroundColor: selectedColor }} />
                   <input type="color" value={normalizeToHexColor(selectedColor) ?? '#ffffff'} onChange={(e) => setSelectedColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
                 </div>
                 <button 
@@ -2961,7 +2990,7 @@ export default function App() {
                   <div key={i} className="relative group flex-shrink-0">
                     <button
                       onClick={() => setSelectedColor(c)}
-                      className={`w-10 h-10 rounded-xl border-2 transition-all ${
+                      className={`w-11 h-11 md:w-10 md:h-10 rounded-xl border-2 transition-all ${
                         selectedColor === c ? 'border-purple-500 scale-110' : 'border-zinc-900 hover:border-zinc-700'
                       }`}
                       style={{ backgroundColor: c }}
@@ -3010,7 +3039,7 @@ export default function App() {
                     <button
                       key={`shade-${i}`}
                       onClick={() => setSelectedColor(c)}
-                      className={`w-8 h-8 rounded-lg border-2 transition-all ${selectedColor === c ? 'border-white scale-110' : 'border-zinc-900 hover:border-zinc-700'}`}
+                      className={`w-9 h-9 md:w-8 md:h-8 rounded-lg border-2 transition-all ${selectedColor === c ? 'border-white scale-110' : 'border-zinc-900 hover:border-zinc-700'}`}
                       style={{ backgroundColor: c }}
                     />
                   ))}
