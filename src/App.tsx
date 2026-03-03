@@ -118,6 +118,44 @@ const TRENDING_PALETTES = [
   { name: 'Street Mode', colors: ['#1A1A1A', '#FF4400', '#00FF00', '#FFFFFF', '#888888'] },
 ];
 
+const COLOR_PACKS: Array<{ name: string; theme: string; colors: string[] }> = [
+  {
+    name: 'Pixel Pop',
+    theme: 'Modern Arcade',
+    colors: ['#3B82F6', '#FF5A5F', '#2DD4BF', '#1F2937', '#F3F4F6'],
+  },
+  {
+    name: 'Soft Retro Candy',
+    theme: 'Nostalgic Pixel',
+    colors: ['#FF6EC7', '#6EC1FF', '#FFD84D', '#B39DDB', '#121212'],
+  },
+  {
+    name: 'Calm Creative',
+    theme: 'Strategic + Serene',
+    colors: ['#4C6FFF', '#4FD1C5', '#F6E7D8', '#7C3AED', '#2D3748'],
+  },
+  {
+    name: 'Playful Builder',
+    theme: 'Energetic + Organized',
+    colors: ['#FF7A00', '#00C2C7', '#7B61FF', '#A3E635', '#111827'],
+  },
+  {
+    name: 'Kawaii Kind',
+    theme: 'Sweet + Soft',
+    colors: ['#FFB3D9', '#FFC9DE', '#FFE29A', '#A7F3D0', '#C7D2FE', '#FFFFFF'],
+  },
+  {
+    name: "Mariah's Birthday",
+    theme: 'Purple Sparkle',
+    colors: ['#6D28D9', '#8B5CF6', '#A78BFA', '#C4B5FD', '#E9D5FF', '#F5F3FF', '#FDE68A'],
+  },
+  {
+    name: 'Soft Gradients',
+    theme: 'Background Flow',
+    colors: ['#4C6FFF', '#6EC1FF', '#7B61FF', '#B39DDB', '#2DD4BF', '#4FD1C5'],
+  },
+];
+
 const STUDIO_STATE_KEY = 'pixel-creator-studio-state-v1';
 const MAX_STUDIO_FEED_ENTRIES = 8;
 
@@ -339,7 +377,7 @@ export default function App() {
   const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
   const [onionSkinning, setOnionSkinning] = useState(false);
   const [showShades, setShowShades] = useState(true);
-  const [activePaletteTab, setActivePaletteTab] = useState<'current' | 'saved' | 'trending'>('current');
+  const [activePaletteTab, setActivePaletteTab] = useState<'current' | 'saved' | 'trending' | 'packs'>('current');
   const [savedPalettes, setSavedPalettes] = useState<{name: string, colors: string[]}[]>(TRENDING_PALETTES);
   const [paletteName, setPaletteName] = useState('My New Palette');
   const [frameNotice, setFrameNotice] = useState<string | null>(null);
@@ -2979,6 +3017,12 @@ export default function App() {
           >
             Trending
           </button>
+          <button
+            onClick={() => setActivePaletteTab('packs')}
+            className={`px-4 py-2 text-[11px] md:text-[10px] font-bold uppercase tracking-widest transition-all ${activePaletteTab === 'packs' ? 'text-purple-500 border-b-2 border-purple-500' : 'text-zinc-500'}`}
+          >
+            Color Packs
+          </button>
         </div>
         
         <div className="flex-1 flex items-start md:items-center px-4 md:px-6 py-2 md:py-0 gap-3 md:gap-4 overflow-x-auto scrollbar-hide">
@@ -3107,7 +3151,7 @@ export default function App() {
                 ))
               )}
             </div>
-          ) : (
+          ) : activePaletteTab === 'trending' ? (
             <div className="flex gap-8">
               {TRENDING_PALETTES.map(tp => (
                 <div key={tp.name} className="flex flex-col gap-2">
@@ -3125,6 +3169,30 @@ export default function App() {
                       ))}
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-4 md:gap-6">
+              {COLOR_PACKS.map(pack => (
+                <div key={pack.name} className="flex flex-col gap-2 min-w-[140px] md:min-w-[160px]">
+                  <div>
+                    <p className="text-[9px] font-bold text-white uppercase tracking-widest">{pack.name}</p>
+                    <p className="text-[8px] text-zinc-500 uppercase tracking-widest mt-0.5">{pack.theme}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setPalette(pack.colors);
+                      setSelectedColor(pack.colors[0]);
+                      setActivePaletteTab('current');
+                    }}
+                    className="flex gap-0.5 bg-zinc-900 p-1.5 rounded-xl border border-zinc-800 hover:border-purple-500 transition-all"
+                    title={`Apply ${pack.name}`}
+                  >
+                    {pack.colors.map((c, index) => (
+                      <div key={`${pack.name}-${index}`} className="w-4 h-9 rounded-sm" style={{ backgroundColor: c }} />
+                    ))}
+                  </button>
                 </div>
               ))}
             </div>
