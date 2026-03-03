@@ -351,6 +351,14 @@ export default function App() {
   type HistoryEntry = { frameIndex: number; pixels: string[] };
   type CoreHistorySnapshot = { entries: HistoryEntry[]; index: number };
   type TimelineSnapshot = { frames: Frame[]; currentFrameIndex: number; previewFrameIndex: number };
+  type CommandStackAudit = {
+    lastLabel: string;
+    stackDepth: number;
+    historyDepth: number;
+    historyIndex: number;
+    canUndo: boolean;
+    canRedo: boolean;
+  };
 
   // Navigation & UI State
   const [activeTab, setActiveTab] = useState<'create' | 'studio' | 'closet' | 'challenges' | 'profile'>('create');
@@ -402,6 +410,14 @@ export default function App() {
   const [lastTaskDate, setLastTaskDate] = useState<string | null>(null);
   const [dailyTasks, setDailyTasks] = useState<StudioTask[]>(() => DAILY_STUDIO_TASKS.map(task => ({ ...task, claimed: false })));
   const [studioNotice, setStudioNotice] = useState<string | null>(null);
+  const [commandStackAudit, setCommandStackAudit] = useState<CommandStackAudit>({
+    lastLabel: 'None',
+    stackDepth: 0,
+    historyDepth: 0,
+    historyIndex: -1,
+    canUndo: false,
+    canRedo: false,
+  });
 
   // Sound System
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -486,6 +502,20 @@ export default function App() {
     setHistoryIndex(snapshot.index);
   }, [cloneHistorySnapshot]);
 
+  const refreshCommandStackAudit = useCallback((lastLabel?: string) => {
+    const commandStack = coreCommandStackRef.current;
+    if (!commandStack) return;
+
+    setCommandStackAudit(prev => ({
+      lastLabel: lastLabel ?? prev.lastLabel,
+      stackDepth: commandStack.depth,
+      historyDepth: coreHistoryRef.current.entries.length,
+      historyIndex: coreHistoryRef.current.index,
+      canUndo: commandStack.canUndo,
+      canRedo: commandStack.canRedo,
+    }));
+  }, []);
+
   const cloneTimelineSnapshot = useCallback((snapshot: TimelineSnapshot): TimelineSnapshot => ({
     frames: snapshot.frames.map(frame => ({
       ...frame,
@@ -534,7 +564,8 @@ export default function App() {
 
     commandStack.execute(command);
     syncHistoryFromCore();
-  }, [cloneHistorySnapshot, syncHistoryFromCore]);
+    refreshCommandStackAudit(label);
+  }, [cloneHistorySnapshot, refreshCommandStackAudit, syncHistoryFromCore]);
 
   const executeTimelineCommand = useCallback((nextTimeline: TimelineSnapshot, label: string) => {
     const commandStack = coreCommandStackRef.current;
@@ -553,7 +584,8 @@ export default function App() {
     };
 
     commandStack.execute(command);
-  }, [applyTimelineSnapshot, captureTimelineSnapshot]);
+    refreshCommandStackAudit(label);
+  }, [applyTimelineSnapshot, captureTimelineSnapshot, refreshCommandStackAudit]);
 
   const flushDraftToState = useCallback(() => {
     if (!strokeDraftRef.current || strokeFrameIndexRef.current === null) return;
@@ -592,6 +624,10 @@ export default function App() {
   useEffect(() => {
     historyIndexRef.current = historyIndex;
   }, [historyIndex]);
+
+  useEffect(() => {
+    refreshCommandStackAudit();
+  }, [refreshCommandStackAudit]);
 
   useEffect(() => {
     return () => {
@@ -709,8 +745,8 @@ export default function App() {
     setStudioFeed(prev => [entry, ...prev].slice(0, MAX_STUDIO_FEED_ENTRIES));
   };
 
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex >= 0 && historyIndex < history.length - 1;
+  const canUndo = commandStackAudit.canUndo;
+  const canRedo = commandStackAudit.canRedo;
 
   const handleTravel = (destinationId: string) => {
     const destination = STUDIO_DESTINATIONS.find(dest => dest.id === destinationId);
@@ -1106,6 +1142,7 @@ export default function App() {
     syncHistoryFromCore();
 
     const snapshot = coreHistoryRef.current;
+    refreshCommandStackAudit('Undo');
     if (snapshot.index === previousHistoryIndex) return;
     const prevEntry = snapshot.entries[snapshot.index];
     if (!prevEntry) return;
@@ -1118,7 +1155,7 @@ export default function App() {
     });
     setCurrentFrameIndex(prevEntry.frameIndex);
     setPreviewFrameIndex(prevEntry.frameIndex);
-  }, [syncHistoryFromCore]);
+  }, [refreshCommandStackAudit, syncHistoryFromCore]);
 
   const redo = useCallback(() => {
     const commandStack = coreCommandStackRef.current;
@@ -1128,6 +1165,7 @@ export default function App() {
     syncHistoryFromCore();
 
     const snapshot = coreHistoryRef.current;
+    refreshCommandStackAudit('Redo');
     if (snapshot.index === previousHistoryIndex) return;
     const nextEntry = snapshot.entries[snapshot.index];
     if (!nextEntry) return;
@@ -1140,7 +1178,7 @@ export default function App() {
     });
     setCurrentFrameIndex(nextEntry.frameIndex);
     setPreviewFrameIndex(nextEntry.frameIndex);
-  }, [syncHistoryFromCore]);
+  }, [refreshCommandStackAudit, syncHistoryFromCore]);
 
   useEffect(() => {
     if (history.length > 0) return;
@@ -4265,6 +4303,22 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {import.meta.env.DEV && (
+        <div className="fixed left-3 top-3 z-[260] bg-zinc-950/95 border border-zinc-800 rounded-xl px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-zinc-400 pointer-events-none">
+          <div className="text-zinc-500">Core Command Audit</div>
+          <div className="text-zinc-300 mt-1">Last: {commandStackAudit.lastLabel}</div>
+          <div className="mt-1 flex items-center gap-3 text-zinc-500">
+            <span>Stack {commandStackAudit.stackDepth}</span>
+            <span>History {commandStackAudit.historyDepth}</span>
+            <span>Idx {commandStackAudit.historyIndex}</span>
+          </div>
+          <div className="mt-1 flex items-center gap-3">
+            <span className={commandStackAudit.canUndo ? 'text-emerald-400' : 'text-zinc-600'}>Undo {commandStackAudit.canUndo ? 'on' : 'off'}</span>
+            <span className={commandStackAudit.canRedo ? 'text-emerald-400' : 'text-zinc-600'}>Redo {commandStackAudit.canRedo ? 'on' : 'off'}</span>
+          </div>
+        </div>
+      )}
 
       <footer className="h-8 border-t border-zinc-900 bg-zinc-950 px-3 flex items-center justify-center gap-3 text-[9px] font-bold uppercase tracking-widest text-zinc-500 flex-shrink-0">
         <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300 transition-colors">Privacy Policy</a>
