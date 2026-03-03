@@ -440,7 +440,9 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     activePointerIdRef.current = e.pointerId;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    if (e.pointerType !== 'touch') {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
     startInteraction(e.clientX, e.clientY);
   }, [endInteraction, startInteraction, zoom]);
 

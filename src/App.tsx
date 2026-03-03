@@ -460,6 +460,7 @@ export default function App() {
   };
 
   const handleZoomChange = useCallback((nextZoom: number) => {
+    if (!Number.isFinite(nextZoom)) return;
     const clamped = Math.max(MIN_CANVAS_ZOOM, Math.min(MAX_CANVAS_ZOOM, nextZoom));
     setZoom(Math.round(clamped * 100) / 100);
   }, []);
@@ -2450,7 +2451,7 @@ export default function App() {
           <div className="px-2 py-2 flex flex-col items-center gap-1 mt-auto">
             <input 
               type="range" min={MIN_CANVAS_ZOOM} max={MAX_CANVAS_ZOOM} step="0.1" value={zoom} 
-              onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
+              onChange={(e) => handleZoomChange(Number(e.target.value))}
               className="h-16 [writing-mode:vertical-lr] accent-purple-500 cursor-pointer"
             />
             <span className="text-[7px] font-bold text-zinc-500">ZOOM</span>
