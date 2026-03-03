@@ -1919,11 +1919,33 @@ export default function App() {
           colorMap.set(color, randomPalette[index]);
         }
       });
-      
-      currentPixels.forEach((color, i) => {
-        if (color !== 'transparent' && colorMap.has(color)) {
-          newPixels[i] = colorMap.get(color)!;
-        }
+
+      const colorUniverse = [
+        currentPixels,
+        randomPalette,
+        ['transparent'],
+      ];
+      const { paletteEntries, registerColor } = buildCorePaletteIndex(colorUniverse);
+      const durationMs = Math.round((1000 / Math.max(1, fps)) * (frames[currentFrameIndex].duration ?? 1));
+      const coreFrame = colorsToCoreFrame(frames[currentFrameIndex].id, currentPixels, durationMs, registerColor);
+
+      let remixed = new Uint16Array(coreFrame.pixels);
+      colorMap.forEach((targetColor, sourceColor) => {
+        const sourceIndex = registerColor(sourceColor);
+        const targetIndex = registerColor(targetColor);
+        remixed = ToolEngine.replaceColor(
+          {
+            ...coreFrame,
+            pixels: remixed,
+          },
+          sourceIndex,
+          targetIndex,
+        );
+      });
+
+      const remixedPixels = corePixelsToColors(remixed, paletteEntries);
+      remixedPixels.forEach((color, index) => {
+        newPixels[index] = color;
       });
     }
 
