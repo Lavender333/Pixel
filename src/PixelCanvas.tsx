@@ -73,7 +73,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastPos, setLastPos] = useState<{ x: number; y: number } | null>(null);
-  const [pinchDistance, setPinchDistance] = useState<number | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
   const isDrawingRef = useRef(false);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<SelectionState>({
@@ -111,9 +111,12 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
 
+    const rawX = Math.floor(((clientX - rect.left) * scaleX) / (canvas.width / gridSize));
+    const rawY = Math.floor(((clientY - rect.top) * scaleY) / (canvas.height / gridSize));
+
     return {
-      x: Math.floor(((clientX - rect.left) * scaleX) / (canvas.width / gridSize)),
-      y: Math.floor(((clientY - rect.top) * scaleY) / (canvas.height / gridSize))
+      x: Math.max(0, Math.min(gridSize - 1, rawX)),
+      y: Math.max(0, Math.min(gridSize - 1, rawY)),
     };
   }, [gridSize]);
 
@@ -300,8 +303,8 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     }
   }), [nudgeSelectionInternal, resetSelection, stampFloat]);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+  const startInteraction = useCallback((clientX: number, clientY: number) => {
+    const { x, y } = getCanvasCoords(clientX, clientY);
 
     if (tool === 'select') {
       if (selection.active) {
@@ -345,10 +348,10 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     const useSize = tool === 'eraser' ? eraserSize : brushSize;
     const color = tool === 'eraser' ? 'transparent' : selectedColor;
     drawBrush(x, y, color, useSize);
-}, [tool, selection.active, getSelectionRect, liftSelection, stampFloat, resetSelection, drawSelectionOverlay, frames, currentFrameIndex, gridSize, onColorPick, selectedColor, commitStroke, brushSize, eraserSize, drawBrush]);
+}, [tool, selection.active, getSelectionRect, liftSelection, stampFloat, resetSelection, drawSelectionOverlay, frames, currentFrameIndex, gridSize, onColorPick, selectedColor, commitStroke, brushSize, eraserSize, drawBrush, getCanvasCoords]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const { x, y } = getCanvasCoords(e.clientX, e.clientY);
+  const moveInteraction = useCallback((clientX: number, clientY: number) => {
+    const { x, y } = getCanvasCoords(clientX, clientY);
 
     if (tool === 'select') {
       if (selection.moving && selection.floatData) {
@@ -375,7 +378,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     lastPosRef.current = { x, y };
   }, [tool, selection.moving, selection.floatData, selection.dragging, drawSelectionOverlay, eraserSize, brushSize, selectedColor, drawInterpolatedStroke, getCanvasCoords]);
 
-  const handleMouseUp = useCallback(() => {
+  const endInteraction = useCallback(() => {
     if (tool === 'select') {
       if (selection.moving) {
         setSelection(prev => ({ ...prev, moving: false }));
@@ -402,49 +405,41 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     setLastPos(null);
     lastPosRef.current = null;
     commitStroke(toolUsedRef.current);
-  }, [tool, selection.moving, selection.dragging, stampFloat, drawSelectionOverlay, getSelectionRect, resetSelection, onSelectionChange, selection.x0, selection.x1, selection.y0, selection.y1, isDrawing, commitStroke]);
+  }, [tool, selection.moving, selection.dragging, stampFloat, drawSelectionOverlay, getSelectionRect, resetSelection, onSelectionChange, selection.x0, selection.x1, selection.y0, selection.y1, commitStroke]);
 
-  const getTouchCoords = useCallback((touch: Touch) => {
-    const canvas = mainCanvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-      x: Math.floor(((touch.clientX - rect.left) * scaleX) / (canvas.width / gridSize)),
-      y: Math.floor(((touch.clientY - rect.top) * scaleY) / (canvas.height / gridSize))
-    };
-  }, [gridSize]);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!e.isPrimary) return;
     e.preventDefault();
-    if (e.touches.length === 2) {
-      const [t1, t2] = Array.from(e.touches) as [Touch, Touch];
-      setPinchDistance(Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY));
-      return;
-    }
-    if (e.touches.length !== 1) return;
-    const coords = getTouchCoords(e.touches[0]);
-    handleMouseDown({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } as React.MouseEvent<HTMLCanvasElement>);
-    setLastPos(coords);
-  }, [getTouchCoords, handleMouseDown]);
+    activePointerIdRef.current = e.pointerId;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    startInteraction(e.clientX, e.clientY);
+  }, [startInteraction]);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!e.isPrimary || activePointerIdRef.current !== e.pointerId) return;
     e.preventDefault();
-    if (e.touches.length === 2 && pinchDistance !== null) {
-      return;
-    }
-    if (e.touches.length !== 1 || !isDrawingRef.current) return;
-    handleMouseMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } as React.MouseEvent<HTMLCanvasElement>);
-  }, [pinchDistance, handleMouseMove]);
+    moveInteraction(e.clientX, e.clientY);
+  }, [moveInteraction]);
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!e.isPrimary || activePointerIdRef.current !== e.pointerId) return;
     e.preventDefault();
-    if (e.touches.length < 2) {
-      setPinchDistance(null);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    handleMouseUp();
-  }, [handleMouseUp]);
+    activePointerIdRef.current = null;
+    endInteraction();
+  }, [endInteraction]);
+
+  const handlePointerCancel = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!e.isPrimary || activePointerIdRef.current !== e.pointerId) return;
+    e.preventDefault();
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    activePointerIdRef.current = null;
+    endInteraction();
+  }, [endInteraction]);
 
   const floodFill = useCallback((startX: number, startY: number, newColor: string) => {
     const frame = frames[currentFrameIndex];
@@ -580,13 +575,11 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
         height={canvasSize}
         className="relative border border-zinc-700 rounded-lg cursor-crosshair"
         style={{ width: scaledSize, height: scaledSize, imageRendering: 'pixelated', touchAction: 'none' }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerLeave={handlePointerUp}
       />
       <canvas
         ref={selectionCanvasRef}
