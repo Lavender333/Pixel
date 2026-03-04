@@ -61,6 +61,21 @@ export class ToolEngine {
     return next;
   }
 
+  /**
+   * Scanline flood fill.
+   *
+   * Processes contiguous horizontal spans instead of individual pixels,
+   * which dramatically reduces the size of the work stack for large regions
+   * and prevents call-stack overflow on big grids.
+   *
+   * Algorithm sketch:
+   *   1. Seed the stack with the starting scan-span.
+   *   2. Pop a span [lx, rx] at row y.
+   *   3. Scan left/right from the seed column to extend the span.
+   *   4. Fill the span.
+   *   5. For the row above (y-1) and the row below (y+1) find contiguous
+   *      sub-spans that need filling and push them onto the stack.
+   */
   static floodFill(
     frame: PixelFrame,
     start: DrawPoint,
@@ -74,20 +89,73 @@ export class ToolEngine {
     const targetColorIndex = next[startIndex];
     if (targetColorIndex === replacementColorIndex) return next;
 
-    const stack: DrawPoint[] = [start];
+    const canFill = (x: number, y: number) => {
+      if (x < 0 || x >= width || y < 0 || y >= height) return false;
+      if (isBlocked?.(x, y)) return false;
+      return next[indexOf(width, x, y)] === targetColorIndex;
+    };
 
-    while (stack.length) {
-      const point = stack.pop()!;
-      if (isBlocked?.(point.x, point.y)) continue;
-      const idx = indexOf(width, point.x, point.y);
-      if (next[idx] !== targetColorIndex) continue;
+    // Stack entries: [leftX, rightX, y, scanDirection] where scanDirection is
+    // the dy that spawned this span (used to avoid redundant parent re-scan).
+    const stack: Array<[number, number, number, number]> = [];
 
-      next[idx] = replacementColorIndex;
+    // Seed: extend from start column to find initial span bounds.
+    let lx = start.x;
+    let rx = start.x;
+    while (lx > 0 && canFill(lx - 1, start.y)) lx -= 1;
+    while (rx < width - 1 && canFill(rx + 1, start.y)) rx += 1;
+    stack.push([lx, rx, start.y, 0]);
 
-      if (point.x > 0) stack.push({ x: point.x - 1, y: point.y });
-      if (point.x < width - 1) stack.push({ x: point.x + 1, y: point.y });
-      if (point.y > 0) stack.push({ x: point.x, y: point.y - 1 });
-      if (point.y < height - 1) stack.push({ x: point.x, y: point.y + 1 });
+    while (stack.length > 0) {
+      const [spanL, spanR, y, fromDy] = stack.pop()!;
+
+      // Fill the span and scan for child spans above and below.
+      let x = spanL;
+      while (x <= spanR) {
+        // Extend left past the original span (may have been clipped by a
+        // previous sibling span that was enqueued from the opposite direction).
+        let cl = x;
+        while (cl > 0 && canFill(cl - 1, y)) cl -= 1;
+
+        // Extend right.
+        let cr = x;
+        while (cr < width - 1 && canFill(cr + 1, y)) cr += 1;
+
+        // Fill the run [cl, cr] on this row.
+        for (let fx = cl; fx <= cr; fx += 1) {
+          next[indexOf(width, fx, y)] = replacementColorIndex;
+        }
+
+        // Enqueue child spans in the upward direction (unless this span was
+        // generated from above, to avoid redundant re-scanning).
+        if (y > 0 && fromDy !== -1) {
+          let sx = cl;
+          while (sx <= cr) {
+            while (sx <= cr && !canFill(sx, y - 1)) sx += 1;
+            if (sx > cr) break;
+            const sl = sx;
+            while (sx <= cr && canFill(sx, y - 1)) sx += 1;
+            stack.push([sl, sx - 1, y - 1, 1]);
+          }
+        }
+
+        // Enqueue child spans in the downward direction.
+        if (y < height - 1 && fromDy !== 1) {
+          let sx = cl;
+          while (sx <= cr) {
+            while (sx <= cr && !canFill(sx, y + 1)) sx += 1;
+            if (sx > cr) break;
+            const sl = sx;
+            while (sx <= cr && canFill(sx, y + 1)) sx += 1;
+            stack.push([sl, sx - 1, y + 1, -1]);
+          }
+        }
+
+        // Advance past the filled run.
+        x = cr + 1;
+        // Skip any already-filled cells between runs on the same row.
+        while (x <= spanR && !canFill(x, y)) x += 1;
+      }
     }
 
     return next;
