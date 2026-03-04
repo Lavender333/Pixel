@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Pencil, 
   Eraser, 
@@ -292,6 +292,39 @@ const DAILY_STUDIO_TASKS: Array<{
 
 type StudioTask = (typeof DAILY_STUDIO_TASKS)[number] & { claimed: boolean };
 
+type StudioAnimatedStarter = {
+  id: string;
+  name: string;
+  templateId: string;
+  preset: AnimationPreset;
+  frames: number;
+  badge: string;
+};
+
+type StudioEffect = 'glow' | 'sparkle' | 'outline' | 'remix';
+
+const STUDIO_CHALLENGE_TEMPLATE_IDS = ['dragon', 'sword', 'city_night', 'space_scene'];
+const STUDIO_Y2K_TEMPLATE_IDS = ['pro', 'sneaker_base', 'pixel_heart', 'lucky_star'];
+
+const STUDIO_ANIMATED_STARTERS: StudioAnimatedStarter[] = [
+  { id: 'cat-walk', name: 'Cat Walk', templateId: 'cat', preset: 'walk_cat', frames: 4, badge: 'Starter' },
+  { id: 'neon-heart', name: 'Neon Heart', templateId: 'pixel_heart', preset: 'neon_heart', frames: 4, badge: 'Loop' },
+  { id: 'pixel-fire', name: 'Pixel Fire', templateId: 'ghost', preset: 'pixel_fire', frames: 4, badge: 'FX' },
+  { id: 'y2k-glitter', name: 'Y2K Glitter', templateId: 'blank', preset: 'y2k_glitter', frames: 4, badge: 'Y2K' },
+];
+
+const STUDIO_EFFECT_CARDS: Array<{
+  id: StudioEffect;
+  label: string;
+  description: string;
+  icon: IconComponent;
+}> = [
+  { id: 'glow', label: 'Glow Boost', description: 'Add subtle halo around painted pixels.', icon: Sparkles },
+  { id: 'sparkle', label: 'Sparkle Dust', description: 'Scatter highlights for extra shine.', icon: Star },
+  { id: 'outline', label: 'Clean Outline', description: 'Generate a crisp edge pass.', icon: Square },
+  { id: 'remix', label: 'Color Remix', description: 'Swap current tones to a fresh palette.', icon: Dices },
+];
+
 const MAX_FRAMES = 40;
 const BIRTHDAY_SPLASH_END_AT = new Date('2026-03-10T23:59:59');
 const MIN_CANVAS_ZOOM = 0.5;
@@ -345,6 +378,44 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
     <span className="text-[10px] font-bold uppercase tracking-widest">{label}</span>
   </button>
 );
+
+const TemplatePreviewCanvas = ({
+  templateId,
+  size,
+  tintColor,
+}: {
+  templateId: string;
+  size: number;
+  tintColor?: string;
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pixels = useMemo(() => getTemplatePixels(templateId, size), [templateId, size]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const canvasSize = 96;
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
+    ctx.clearRect(0, 0, canvasSize, canvasSize);
+    const cell = canvasSize / size;
+    ctx.imageSmoothingEnabled = false;
+
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const color = pixels[y * size + x];
+        if (!color || color === 'transparent') continue;
+        ctx.fillStyle = tintColor ?? color;
+        ctx.fillRect(x * cell, y * cell, cell, cell);
+      }
+    }
+  }, [pixels, size, tintColor]);
+
+  return <canvas ref={canvasRef} className="w-full h-full pixel-grid" aria-hidden="true" />;
+};
 
 export default function App() {
   type ExportFormat = 'png' | 'gif' | 'sprite-sheet' | 'jpeg' | 'print' | 'palette';
@@ -2545,6 +2616,70 @@ export default function App() {
     });
   };
 
+  const startBlankCanvas = (size: 16 | 32 | 64) => {
+    const blankPixels = Array(size * size).fill('transparent');
+    setGridSize(size);
+    setFrames([{ id: Math.random().toString(36).substr(2, 9), pixels: blankPixels }]);
+    setCurrentFrameIndex(0);
+    setPreviewFrameIndex(0);
+    setIsPlaying(false);
+    setShowPreview(true);
+    setActiveTemplateId('blank');
+    setLockMask(null);
+    setColorableMask(null);
+    setTemplateCompletionAwarded(false);
+    setGoldFlash(false);
+    setTool('pencil');
+    setProjectName(`Blank ${size}x${size}`);
+    setOnboarding(false);
+    setActiveTab('create');
+    saveToHistory(blankPixels, 0, `Blank ${size}x${size}`);
+    showFrameNotice(`Blank ${size}×${size} canvas ready`);
+    trackEvent('template_started', {
+      template_id: 'blank',
+      template_kind: 'sprite',
+      canvas_size: size,
+      source: 'studio-blank',
+    });
+  };
+
+  const loadTemplateFromStudio = (template: TemplateCard, source: string) => {
+    if (template.locked && !isTeenMode) {
+      showStudioNotice('Teen Mode (Lvl 10) required for this starter');
+      return false;
+    }
+
+    startWithTemplate(template);
+    setActiveTab('create');
+    setTool(template.kind === 'color-in' ? 'fill' : 'pencil');
+    if (template.kind === 'color-in') {
+      showFrameNotice('Outline locked · Fill the regions · Complete for XP');
+    }
+    addStudioFeedEntry(`${template.name} loaded • ${source}`);
+    return true;
+  };
+
+  const launchAnimatedStarter = (starter: StudioAnimatedStarter) => {
+    const template = TEMPLATES.find(item => item.id === starter.templateId);
+    if (!template) {
+      showStudioNotice('Starter is unavailable right now');
+      return;
+    }
+    if (!loadTemplateFromStudio(template, 'Animated Starter')) {
+      return;
+    }
+    setTimeout(() => {
+      applyAnimationPreset(starter.preset);
+      showStudioNotice(`${starter.name} ready`);
+    }, 0);
+  };
+
+  const applyStudioEffect = (effect: StudioEffect) => {
+    setActiveTab('create');
+    applyEffect(effect);
+    showStudioNotice('Smart effect applied');
+  };
+
   const canAddMoreFrames = frames.length < MAX_FRAMES;
 
   // --- Sub-Views ---
@@ -2627,7 +2762,8 @@ export default function App() {
         
         <Button
           onClick={() => {
-            setShowTemplates(true);
+            setOnboarding(false);
+            setActiveTab('studio');
             trackEvent('template_picker_opened');
           }}
           className="w-full py-4 text-lg"
@@ -2805,7 +2941,7 @@ export default function App() {
           </Button>
           <Button 
             variant="ghost" 
-            onClick={() => setShowTemplates(true)} 
+            onClick={() => setActiveTab('studio')} 
             className="px-3 py-2 text-xs flex items-center gap-2 border border-zinc-800"
           >
             <Plus className="w-3 h-3" /> New
@@ -3630,260 +3766,198 @@ export default function App() {
   );
 
   const StudioView = () => {
-    const ownedPluginMeta = PLUGIN_LIBRARY.filter(plugin => ownedPlugins.includes(plugin.id));
-    const completedTasks = dailyTasks.filter(task => task.claimed).length;
+    const charactersTemplates = TEMPLATES.filter(template => template.category === 'characters');
+    const itemsTemplates = TEMPLATES.filter(template => template.category === 'items');
+    const scenesTemplates = TEMPLATES.filter(template => template.category === 'scenes');
+    const colorInTemplates = TEMPLATES.filter(template => template.category === 'color-in');
+    const challengeTemplates = STUDIO_CHALLENGE_TEMPLATE_IDS
+      .map(id => TEMPLATES.find(template => template.id === id))
+      .filter((template): template is TemplateCard => Boolean(template));
+    const y2kTemplates = STUDIO_Y2K_TEMPLATE_IDS
+      .map(id => TEMPLATES.find(template => template.id === id))
+      .filter((template): template is TemplateCard => Boolean(template));
+
+    const sectionTitle = (title: string) => (
+      <div className="mb-3 flex items-center gap-3">
+        <h3 className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500 whitespace-nowrap">{title}</h3>
+        <div className="h-px flex-1 bg-zinc-800" />
+      </div>
+    );
+
+    const renderTemplateCard = (
+      template: TemplateCard,
+      options?: {
+        badge?: string;
+        tintColor?: string;
+        source?: string;
+      },
+    ) => {
+      const isLocked = Boolean(template.locked && !isTeenMode);
+      return (
+        <button
+          key={`${options?.source ?? 'studio'}-${template.id}`}
+          onClick={() => loadTemplateFromStudio(template, options?.source ?? 'Studio')}
+          disabled={isLocked}
+          className={`overflow-hidden rounded-2xl border bg-zinc-900/80 transition-all text-left ${isLocked ? 'opacity-45 cursor-not-allowed border-zinc-800' : 'border-zinc-800 hover:border-purple-500 hover:-translate-y-0.5'}`}
+        >
+          <div className="relative aspect-square bg-zinc-950 border-b border-zinc-800">
+            <TemplatePreviewCanvas templateId={template.id} size={template.size} tintColor={options?.tintColor} />
+            {options?.badge ? (
+              <span className="absolute left-2 top-2 px-2 py-0.5 rounded-full bg-black/60 border border-white/15 text-[8px] font-bold uppercase tracking-widest text-zinc-200">
+                {options.badge}
+              </span>
+            ) : null}
+            {isLocked ? (
+              <span className="absolute right-2 top-2 w-6 h-6 rounded-full bg-black/65 border border-purple-500/40 flex items-center justify-center">
+                <ShieldCheck className="w-3.5 h-3.5 text-purple-300" />
+              </span>
+            ) : null}
+            <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/35 to-transparent" />
+          </div>
+          <div className="p-3 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-zinc-100 truncate">{template.name.replace(' (Color-In)', '')}</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 mt-1">{template.size}x{template.size}</p>
+            </div>
+            <div className="text-zinc-500">{template.icon}</div>
+          </div>
+        </button>
+      );
+    };
 
     return (
-      <div className="flex-1 flex flex-col gap-8 p-8 overflow-y-auto relative">
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <motion.div 
-            whileHover={{ y: -5 }}
-            className="xl:col-span-2 bg-gradient-to-r from-purple-900/50 via-indigo-900/20 to-transparent border border-purple-500/20 rounded-[40px] p-8 relative overflow-hidden"
-          >
-            <div className="flex flex-col gap-6 relative z-10">
-              <div className="flex items-center gap-3 text-purple-300 text-[10px] font-black uppercase tracking-widest">
-                <MapIcon className="w-4 h-4" /> Studio Passport
-              </div>
-              <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-                <div>
-                  <h2 className="text-4xl font-display italic text-white tracking-tight">Keep the studio economy humming.</h2>
-                  <p className="text-zinc-400 text-sm mt-2 max-w-xl">Hop between labs, install plugins, and finish daily briefs to keep your toolkit funded.</p>
-                </div>
-                <div className="flex flex-wrap gap-4">
-                  <div className="px-4 py-3 rounded-2xl bg-black/30 border border-white/10 flex items-center gap-2">
-                    <Coins className="w-4 h-4 text-amber-300" />
-                    <div>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Coins</p>
-                      <p className="text-lg font-mono text-white">{coins.toLocaleString()}</p>
-                    </div>
-                  </div>
-                  <div className="px-4 py-3 rounded-2xl bg-black/30 border border-white/10 flex items-center gap-2">
-                    <Gem className="w-4 h-4 text-sky-300" />
-                    <div>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Gems</p>
-                      <p className="text-lg font-mono text-white">{gems}</p>
-                    </div>
-                  </div>
-                  <div className="px-4 py-3 rounded-2xl bg-black/30 border border-white/10 flex items-center gap-2">
-                    <BadgeDollarSign className="w-4 h-4 text-emerald-300" />
-                    <div>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Tasks</p>
-                      <p className="text-lg font-mono text-white">{completedTasks}/{dailyTasks.length}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3 text-[9px] font-bold text-purple-200 uppercase tracking-[0.3em]">
-                <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30">Warp-ready</span>
-                <span className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">Live Sync</span>
-                <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30">Economy Safe</span>
-              </div>
-            </div>
-            <motion.div
-              animate={{ rotate: [0, 6, 0], y: [0, -10, 0] }}
-              transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-              className="absolute -right-10 -bottom-6 w-56 h-56 bg-purple-500/20 rounded-full blur-3xl"
-            />
-          </motion.div>
-
-          <motion.div 
-            whileHover={{ y: -5 }}
-            className="bg-zinc-900 border border-zinc-800 rounded-[40px] p-6 flex flex-col gap-4"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Installed Plugins</p>
-                <p className="text-2xl font-display italic text-white mt-1">{ownedPluginMeta.length}</p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center">
-                <PlugZap className="w-5 h-5 text-purple-300" />
-              </div>
-            </div>
-            {ownedPluginMeta.length === 0 ? (
-              <p className="text-sm text-zinc-500">Install a plugin to level up your studio toolkit.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {ownedPluginMeta.map(plugin => (
-                  <span key={plugin.id} className="px-3 py-1 rounded-full bg-zinc-800 border border-zinc-700 text-[10px] font-bold uppercase tracking-widest text-zinc-300">
-                    {plugin.name}
-                  </span>
-                ))}
-              </div>
-            )}
-            <button
-              onClick={() => handleTravel('creator-hq')}
-              className="mt-auto w-full px-4 py-3 rounded-2xl bg-purple-600/20 text-purple-200 border border-purple-500/30 text-[10px] font-bold uppercase tracking-widest hover:bg-purple-600/30 transition-colors"
-            >
-              Quick Sync Jump
-            </button>
-          </motion.div>
+      <div id="studio-screen" className="flex-1 overflow-y-auto bg-[#0a0a0a] pb-7">
+        <div className="px-5 pt-6 pb-5 bg-gradient-to-b from-purple-600/15 via-purple-500/5 to-transparent border-b border-zinc-900">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-purple-300">Studio</p>
+          <h2 className="text-3xl font-display italic text-white mt-2">Starter Library & Smart Effects</h2>
+          <p className="text-sm text-zinc-400 mt-2">Pick a template, launch to canvas, then style with effects. The Studio stays inside this SPA tab.</p>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-2xl font-display italic text-white">Studio Destinations</h3>
-            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Pick a mission lane</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {STUDIO_DESTINATIONS.map(destination => {
-              const Icon = destination.icon;
-              return (
-                <motion.div
-                  key={destination.id}
-                  whileHover={{ y: -6 }}
-                  className={`rounded-[36px] p-6 border border-white/10 text-white bg-gradient-to-br ${destination.gradient} relative overflow-hidden`}
+        <section className="px-4 pt-5 pb-7">
+          <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/60 p-4">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-400">
+                <PlusCircle className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-white">Blank Canvas</p>
+                <p className="text-[11px] text-zinc-400 mt-1">Start from scratch at your preferred size.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-4">
+              {[16, 32, 64].map(size => (
+                <button
+                  key={`blank-${size}`}
+                  onClick={() => startBlankCanvas(size as 16 | 32 | 64)}
+                  className="py-2 rounded-xl border border-zinc-700 bg-zinc-800 text-[11px] font-bold text-zinc-200 hover:border-purple-500 hover:text-purple-200"
                 >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/80">
-                        <span className="px-3 py-1 rounded-full bg-white/20">{destination.badge}</span>
-                        Mission Deck
-                      </div>
-                      <h4 className="text-2xl font-display italic mt-3">{destination.title}</h4>
-                    </div>
-                    <div className="w-12 h-12 rounded-2xl bg-black/20 flex items-center justify-center">
-                      <Icon className="w-6 h-6" />
-                    </div>
+                  {size}×{size}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="px-4 pb-7">
+          {sectionTitle('🎨 Color-In Templates')}
+          <p className="text-[10px] text-zinc-500 tracking-wide mb-3">Outline locked · Fill the regions · Complete for XP</p>
+          <div id="tmpl-coloring" className="grid grid-cols-2 gap-3">
+            {colorInTemplates.map(template => renderTemplateCard(template, { badge: 'Color-In', tintColor: '#9B94FF', source: 'Color-In Templates' }))}
+          </div>
+        </section>
+
+        <section className="px-4 pb-7">
+          {sectionTitle('🏆 Challenge Templates')}
+          <div id="tmpl-challenge" className="grid grid-cols-2 gap-3">
+            {challengeTemplates.map(template => renderTemplateCard(template, { badge: 'Challenge', source: 'Challenge Templates' }))}
+          </div>
+        </section>
+
+        <section className="px-4 pb-7">
+          {sectionTitle('🎬 Animated Starters')}
+          <div id="tmpl-anim" className="grid grid-cols-2 gap-3">
+            {STUDIO_ANIMATED_STARTERS.map(starter => {
+              const starterTemplate = TEMPLATES.find(template => template.id === starter.templateId);
+              if (!starterTemplate) return null;
+              return (
+                <button
+                  key={starter.id}
+                  onClick={() => launchAnimatedStarter(starter)}
+                  className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 hover:border-purple-500 hover:-translate-y-0.5 transition-all text-left"
+                >
+                  <div className="relative aspect-square bg-zinc-950 border-b border-zinc-800">
+                    <TemplatePreviewCanvas templateId={starterTemplate.id} size={starterTemplate.size} />
+                    <span className="absolute left-2 top-2 px-2 py-0.5 rounded-full bg-black/60 border border-white/15 text-[8px] font-bold uppercase tracking-widest text-zinc-200">
+                      {starter.badge}
+                    </span>
+                    <span className="absolute left-2 bottom-2 px-2 py-0.5 rounded-full bg-black/60 border border-white/15 text-[8px] font-bold uppercase tracking-widest text-zinc-200">
+                      {starter.frames} Frames
+                    </span>
+                    <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/35 to-transparent" />
                   </div>
-                  <p className="text-sm text-white/80 mt-4 leading-relaxed">{destination.description}</p>
-                  <ul className="mt-4 space-y-1 text-[11px] text-white/80">
-                    {destination.tasks.map(task => (
-                      <li key={task} className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white/70" />
-                        {task}
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    onClick={() => handleTravel(destination.id)}
-                    className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-white/30"
-                  >
-                    <MapIcon className="w-3 h-3" /> Warp Now
-                  </button>
-                </motion.div>
+                  <div className="p-3">
+                    <p className="text-[11px] font-bold text-zinc-100 truncate">{starter.name}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 mt-1">Preset: {starter.preset.replace('_', ' ')}</p>
+                  </div>
+                </button>
               );
             })}
           </div>
-        </div>
+        </section>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-          <div className="bg-zinc-950 border border-zinc-900 rounded-[32px] p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-display italic text-white">Plugin Library</h3>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Boost your editor</p>
-              </div>
-              <PiggyBank className="w-6 h-6 text-purple-300" />
-            </div>
-            <div className="space-y-4 mt-6">
-              {PLUGIN_LIBRARY.map(plugin => {
-                const Icon = plugin.icon;
-                const isOwned = ownedPlugins.includes(plugin.id);
-                const hasFunds = coins >= plugin.costCoins && gems >= plugin.costGems;
-                return (
-                  <div
-                    key={plugin.id}
-                    className="p-4 rounded-2xl border border-zinc-800 bg-zinc-900/60 flex flex-col gap-4 md:flex-row md:items-center"
-                  >
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center">
-                        <Icon className="w-5 h-5 text-purple-300" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-purple-400 uppercase tracking-widest">{plugin.badge}</span>
-                          {isOwned && (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[9px] font-bold uppercase tracking-widest">
-                              Installed
-                            </span>
-                          )}
-                        </div>
-                        <h4 className="text-lg font-display text-white mt-1">{plugin.name}</h4>
-                        <p className="text-sm text-zinc-400 mt-1">{plugin.description}</p>
-                        <p className="text-[11px] text-emerald-300 mt-2 font-bold uppercase tracking-widest">{plugin.boost}</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 text-[11px] font-bold text-zinc-400">
-                      <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-1 text-amber-300">
-                          <Coins className="w-3 h-3" /> {plugin.costCoins}
-                        </span>
-                        <span className="flex items-center gap-1 text-sky-300">
-                          <Gem className="w-3 h-3" /> {plugin.costGems}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => handlePurchasePlugin(plugin.id)}
-                        disabled={!hasFunds || isOwned}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${isOwned ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40 cursor-default' : hasFunds ? 'bg-purple-600 text-white border-purple-400 hover:bg-purple-500' : 'bg-zinc-800 text-zinc-500 border-zinc-700 cursor-not-allowed'}`}
-                      >
-                        {isOwned ? 'Installed' : hasFunds ? 'Install' : 'Need Funds'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+        <section className="px-4 pb-7">
+          {sectionTitle('💎 Y2K Premium Pack')}
+          <div id="tmpl-y2k" className="grid grid-cols-2 gap-3">
+            {y2kTemplates.map(template => renderTemplateCard(template, { badge: 'Y2K', source: 'Y2K Premium Pack' }))}
           </div>
+        </section>
 
-          <div className="grid grid-cols-1 gap-6">
-            <div className="bg-zinc-950 border border-zinc-900 rounded-[32px] p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-display italic text-white">Daily Studio Tasks</h3>
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Earn rewards for shipping</p>
-                </div>
-                <Wallet className="w-6 h-6 text-emerald-300" />
-              </div>
-              <div className="space-y-4 mt-6">
-                {dailyTasks.map(task => (
-                  <div key={task.id} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900 border border-zinc-800">
+        <section className="px-4 pb-7">
+          {sectionTitle('👟 Items & Gear')}
+          <div id="tmpl-items" className="grid grid-cols-2 gap-3">
+            {itemsTemplates.map(template => renderTemplateCard(template, { source: 'Items & Gear' }))}
+          </div>
+        </section>
+
+        <section className="px-4 pb-7">
+          {sectionTitle('🐾 Characters & Pets')}
+          <div id="tmpl-chars" className="grid grid-cols-2 gap-3">
+            {charactersTemplates.map(template => renderTemplateCard(template, { source: 'Characters & Pets' }))}
+          </div>
+        </section>
+
+        <section className="px-4 pb-7">
+          {sectionTitle('🏠 Scenes & Rooms')}
+          <div id="tmpl-scenes" className="grid grid-cols-2 gap-3">
+            {scenesTemplates.map(template => renderTemplateCard(template, { source: 'Scenes & Rooms' }))}
+          </div>
+        </section>
+
+        <section className="px-4 pb-4">
+          {sectionTitle('⚡ Smart Effects')}
+          <div id="fx-grid" className="grid grid-cols-2 gap-3">
+            {STUDIO_EFFECT_CARDS.map(effectCard => {
+              const Icon = effectCard.icon;
+              return (
+                <button
+                  key={effectCard.id}
+                  onClick={() => applyStudioEffect(effectCard.id)}
+                  className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-left hover:border-purple-500 hover:-translate-y-0.5 transition-all"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-purple-300">
+                      <Icon className="w-5 h-5" />
+                    </div>
                     <div>
-                      <p className="text-sm font-bold text-white">{task.label}</p>
-                      <div className="flex gap-3 mt-2 text-[10px] font-bold uppercase tracking-widest">
-                        <span className="flex items-center gap-1 text-amber-300">
-                          <Coins className="w-3 h-3" /> +{task.rewardCoins}
-                        </span>
-                        {task.rewardGems > 0 && (
-                          <span className="flex items-center gap-1 text-sky-300">
-                            <Gem className="w-3 h-3" /> +{task.rewardGems}
-                          </span>
-                        )}
-                      </div>
+                      <p className="text-sm font-bold text-zinc-100">{effectCard.label}</p>
+                      <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">{effectCard.description}</p>
                     </div>
-                    <button
-                      onClick={() => handleClaimTask(task.id)}
-                      disabled={task.claimed}
-                      className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${task.claimed ? 'bg-zinc-900 text-zinc-600 border-zinc-700 cursor-default' : 'bg-emerald-500 text-black border-emerald-400 hover:bg-emerald-400'}`}
-                    >
-                      {task.claimed ? 'Claimed' : 'Claim'}
-                    </button>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-zinc-950 border border-zinc-900 rounded-[32px] p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-display italic text-white">Studio Feed</h3>
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Latest sync events</p>
-                </div>
-                <PiggyBank className="w-6 h-6 text-pink-300" />
-              </div>
-              <div className="mt-4 space-y-3">
-                {studioFeed.map((entry, index) => (
-                  <div key={`${entry}-${index}`} className="flex items-start gap-3 p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800">
-                    <div className="w-10 h-10 rounded-2xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center">
-                      <Sparkles className="w-4 h-4 text-purple-300" />
-                    </div>
-                    <p className="text-sm text-zinc-300">{entry}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+                </button>
+              );
+            })}
           </div>
-        </div>
+        </section>
 
         <AnimatePresence>
           {studioNotice && (
@@ -3891,7 +3965,7 @@ export default function App() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="fixed bottom-24 right-8 bg-zinc-900/95 border border-purple-500/30 text-sm font-bold text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-2"
+              className="fixed bottom-24 right-4 bg-zinc-900/95 border border-purple-500/30 text-sm font-bold text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-2"
             >
               <BadgeDollarSign className="w-4 h-4 text-purple-300" />
               {studioNotice}
@@ -3950,7 +4024,7 @@ export default function App() {
           {/* Quick Action Tile */}
           <motion.div 
             whileHover={{ y: -5 }}
-            onClick={() => setShowTemplates(true)}
+            onClick={() => setActiveTab('studio')}
             className="bg-purple-600 rounded-[32px] p-8 flex flex-col items-center justify-center text-center cursor-pointer group relative overflow-hidden"
           >
             <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-all">
@@ -4019,7 +4093,7 @@ export default function App() {
           <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 border-2 border-dashed border-zinc-900 rounded-[32px] p-12">
             <Shirt className="w-12 h-12 mb-4 opacity-20" />
             <p className="font-bold uppercase tracking-widest text-xs">No {selectedCategory}s yet</p>
-            <Button onClick={() => setShowTemplates(true)} variant="ghost" className="mt-4 text-[10px]">Create Something</Button>
+            <Button onClick={() => setActiveTab('studio')} variant="ghost" className="mt-4 text-[10px]">Create Something</Button>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
