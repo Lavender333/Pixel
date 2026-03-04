@@ -325,6 +325,8 @@ const STUDIO_EFFECT_CARDS: Array<{
   { id: 'remix', label: 'Color Remix', description: 'Swap current tones to a fresh palette.', icon: Dices },
 ];
 
+const COLOR_IN_TINT = '#9B94FF';
+
 const MAX_FRAMES = 40;
 const BIRTHDAY_SPLASH_END_AT = new Date('2026-03-10T23:59:59');
 const MIN_CANVAS_ZOOM = 0.5;
@@ -2619,7 +2621,7 @@ export default function App() {
   const startBlankCanvas = (size: 16 | 32 | 64) => {
     const blankPixels = Array(size * size).fill('transparent');
     setGridSize(size);
-    setFrames([{ id: Math.random().toString(36).substr(2, 9), pixels: blankPixels }]);
+    setFrames([{ id: Math.random().toString(36).slice(2, 11), pixels: blankPixels }]);
     setCurrentFrameIndex(0);
     setPreviewFrameIndex(0);
     setIsPlaying(false);
@@ -3862,7 +3864,7 @@ export default function App() {
           {sectionTitle('🎨 Color-In Templates')}
           <p className="text-[10px] text-zinc-500 tracking-wide mb-3">Outline locked · Fill the regions · Complete for XP</p>
           <div id="tmpl-coloring" className="grid grid-cols-2 gap-3">
-            {colorInTemplates.map(template => renderTemplateCard(template, { badge: 'Color-In', tintColor: '#9B94FF', source: 'Color-In Templates' }))}
+            {colorInTemplates.map(template => renderTemplateCard(template, { badge: 'Color-In', tintColor: COLOR_IN_TINT, source: 'Color-In Templates' }))}
           </div>
         </section>
 
