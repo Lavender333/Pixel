@@ -2627,7 +2627,8 @@ export default function App() {
         
         <Button
           onClick={() => {
-            setShowTemplates(true);
+            setOnboarding(false);
+            setActiveTab('studio');
             trackEvent('template_picker_opened');
           }}
           className="w-full py-4 text-lg"
@@ -2805,7 +2806,7 @@ export default function App() {
           </Button>
           <Button 
             variant="ghost" 
-            onClick={() => setShowTemplates(true)} 
+            onClick={() => setActiveTab('studio')} 
             className="px-3 py-2 text-xs flex items-center gap-2 border border-zinc-800"
           >
             <Plus className="w-3 h-3" /> New
@@ -3950,7 +3951,7 @@ export default function App() {
           {/* Quick Action Tile */}
           <motion.div 
             whileHover={{ y: -5 }}
-            onClick={() => setShowTemplates(true)}
+            onClick={() => setActiveTab('studio')}
             className="bg-purple-600 rounded-[32px] p-8 flex flex-col items-center justify-center text-center cursor-pointer group relative overflow-hidden"
           >
             <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-all">
@@ -4019,7 +4020,7 @@ export default function App() {
           <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 border-2 border-dashed border-zinc-900 rounded-[32px] p-12">
             <Shirt className="w-12 h-12 mb-4 opacity-20" />
             <p className="font-bold uppercase tracking-widest text-xs">No {selectedCategory}s yet</p>
-            <Button onClick={() => setShowTemplates(true)} variant="ghost" className="mt-4 text-[10px]">Create Something</Button>
+            <Button onClick={() => setActiveTab('studio')} variant="ghost" className="mt-4 text-[10px]">Create Something</Button>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
