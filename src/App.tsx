@@ -2627,8 +2627,8 @@ export default function App() {
         
         <Button
           onClick={() => {
-            setShowTemplates(true);
-            trackEvent('template_picker_opened');
+            setActiveTab('studio');
+            trackEvent('studio_opened');
           }}
           className="w-full py-4 text-lg"
         >
