@@ -291,11 +291,33 @@ const DAILY_STUDIO_TASKS: Array<{
 ];
 
 type StudioTask = (typeof DAILY_STUDIO_TASKS)[number] & { claimed: boolean };
+type AppTab = 'create' | 'studio' | 'closet' | 'challenges' | 'profile';
 
 const MAX_FRAMES = 40;
 const BIRTHDAY_SPLASH_END_AT = new Date('2026-03-10T23:59:59');
 const MIN_CANVAS_ZOOM = 0.5;
 const MAX_CANVAS_ZOOM = 6;
+const normalizeRoutePath = (pathname: string) => {
+  const trimmed = pathname.replace(/\/+$/, '');
+  return trimmed === '' ? '/' : trimmed;
+};
+
+const tabFromPath = (pathname: string): AppTab => {
+  const normalized = normalizeRoutePath(pathname);
+  if (normalized === '/studio') return 'studio';
+  if (normalized === '/closet') return 'closet';
+  if (normalized === '/challenges') return 'challenges';
+  if (normalized === '/profile') return 'profile';
+  return 'create';
+};
+
+const pathFromTab = (tab: AppTab) => {
+  if (tab === 'studio') return '/studio';
+  if (tab === 'closet') return '/closet';
+  if (tab === 'challenges') return '/challenges';
+  if (tab === 'profile') return '/profile';
+  return '/';
+};
 
 const normalizeToHexColor = (color: string): string | null => {
   if (!color || color === 'transparent') return null;
@@ -360,10 +382,15 @@ export default function App() {
     canRedo: boolean;
   };
 
+  const initialPathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const initialNormalizedPath = normalizeRoutePath(initialPathname);
+  const initialTab = tabFromPath(initialPathname);
+  const startsOnRootPath = initialNormalizedPath === '/';
+
   // Navigation & UI State
-  const [activeTab, setActiveTab] = useState<'create' | 'studio' | 'closet' | 'challenges' | 'profile'>('create');
-  const [onboarding, setOnboarding] = useState(true);
-  const [showBirthdaySplash, setShowBirthdaySplash] = useState(() => new Date() <= BIRTHDAY_SPLASH_END_AT);
+  const [activeTab, setActiveTab] = useState<AppTab>(() => initialTab);
+  const [onboarding, setOnboarding] = useState(() => startsOnRootPath);
+  const [showBirthdaySplash, setShowBirthdaySplash] = useState(() => startsOnRootPath && new Date() <= BIRTHDAY_SPLASH_END_AT);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   
@@ -630,6 +657,28 @@ export default function App() {
       canvas_size: gridSize,
     });
   }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const pathname = window.location.pathname;
+      const nextTab = tabFromPath(pathname);
+      setActiveTab(nextTab);
+      if (nextTab !== 'create') {
+        setOnboarding(false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    const targetPath = pathFromTab(activeTab);
+    const currentPath = normalizeRoutePath(window.location.pathname);
+    if (currentPath !== targetPath) {
+      window.history.replaceState({}, '', targetPath);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!showBirthdaySplash) return;
