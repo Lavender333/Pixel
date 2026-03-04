@@ -133,6 +133,73 @@ export class ToolEngine {
     return next;
   }
 
+  static applyMultiPointStroke(params: {
+    frame: PixelFrame;
+    points: DrawPoint[];
+    colorIndex: number;
+    brushSize?: number;
+    mirrorX?: boolean;
+    isBlocked?: (x: number, y: number) => boolean;
+  }) {
+    const { frame, points, colorIndex, brushSize = 1, mirrorX = false, isBlocked } = params;
+    if (points.length === 0) return new Uint16Array(frame.pixels);
+
+    const next = new Uint16Array(frame.pixels);
+
+    const plot = (x: number, y: number) => {
+      for (let oy = 0; oy < brushSize; oy += 1) {
+        for (let ox = 0; ox < brushSize; ox += 1) {
+          const px = clamp(x + ox, 0, frame.width - 1);
+          const py = clamp(y + oy, 0, frame.height - 1);
+          if (isBlocked?.(px, py)) continue;
+          next[indexOf(frame.width, px, py)] = colorIndex;
+          if (mirrorX) {
+            const mx = frame.width - 1 - px;
+            if (isBlocked?.(mx, py)) continue;
+            next[indexOf(frame.width, mx, py)] = colorIndex;
+          }
+        }
+      }
+    };
+
+    const drawSegment = (from: DrawPoint, to: DrawPoint) => {
+      let x0 = from.x;
+      let y0 = from.y;
+      const x1 = to.x;
+      const y1 = to.y;
+
+      const dx = Math.abs(x1 - x0);
+      const sx = x0 < x1 ? 1 : -1;
+      const dy = -Math.abs(y1 - y0);
+      const sy = y0 < y1 ? 1 : -1;
+      let err = dx + dy;
+
+      while (true) {
+        plot(x0, y0);
+        if (x0 === x1 && y0 === y1) break;
+        const e2 = 2 * err;
+        if (e2 >= dy) {
+          err += dy;
+          x0 += sx;
+        }
+        if (e2 <= dx) {
+          err += dx;
+          y0 += sy;
+        }
+      }
+    };
+
+    if (points.length === 1) {
+      plot(points[0].x, points[0].y);
+    } else {
+      for (let i = 0; i < points.length - 1; i += 1) {
+        drawSegment(points[i], points[i + 1]);
+      }
+    }
+
+    return next;
+  }
+
   static shadeAssist(frame: PixelFrame, delta: number, maxPaletteIndex: number) {
     const next = new Uint16Array(frame.pixels);
     for (let i = 0; i < next.length; i += 1) {
