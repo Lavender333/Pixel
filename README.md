@@ -1,5 +1,7 @@
 # Pixel Sprite Creator
 
+**Repository:** [Lavender333/Pixel](https://github.com/Lavender333/Pixel)
+
 ## Analytics (Usage, Location, Shares)
 
 This app now includes your Google Analytics 4 (GA4) tag directly in site entry pages.
